@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as ImagePicker from 'expo-image-picker';
 import { type Href, useLocalSearchParams, useRouter } from 'expo-router';
@@ -7,11 +8,12 @@ import { StyleSheet, Text, View } from 'react-native';
 import { z } from 'zod';
 
 import { BrandLogo } from '@/components/brand/logo';
-import { ActionRow, Body, Button, Card, Header, InfoTile, Input, Screen, SectionLabel, StatusPanel, StepIndicator, Title, UploadBox } from '@/components/ui/primitives';
-import { colors, fonts, spacing, typography } from '@/constants/theme';
+import { ActionRow, Body, Button, Card, Header, IconButton, InfoTile, Input, Screen, SectionLabel, StatusPanel, StepIndicator, Title, UploadBox } from '@/components/ui/primitives';
+import { colors, fonts, radius, spacing, typography } from '@/constants/theme';
 import { useSafeBack } from '@/hooks/use-safe-back';
 import { useSession } from '@/providers/app-provider';
 import { authService } from '@/services/api';
+import { ApiError } from '@/services/http';
 import type { FileUpload } from '@/types/domain';
 
 function ErrorNotice({ message }: { message: string }) {
@@ -39,12 +41,25 @@ const registerSchema = z.object({
 });
 
 const verifySchema = z.object({ code: z.string().min(4, 'Ingresá el código recibido.') });
+const passwordRegex = /^(?![0-9])(?=.*[A-Z])(?=.*[0-9])(?=.*[^a-zA-Z0-9]).{8,}$/;
 const passwordSchema = z.object({
-  password: z.string().min(8, 'Mínimo 8 caracteres.'),
+  password: z.string()
+    .min(8, 'La contraseña debe tener mínimo 8 caracteres.')
+    .regex(passwordRegex, 'La contraseña no cumple los requisitos de seguridad.'),
   confirmation: z.string().min(8, 'Confirmá tu contraseña.'),
 }).refine((values) => values.password === values.confirmation, { path: ['confirmation'], message: 'Las contraseñas no coinciden.' });
 
 const registrationSteps = ['Datos', 'Código', 'Clave', 'Pago'];
+
+function getPasswordChecks(password: string) {
+  return [
+    { label: 'Mínimo 8 caracteres', valid: password.length >= 8 },
+    { label: 'Al menos una letra mayúscula', valid: /[A-Z]/.test(password) },
+    { label: 'Al menos un número', valid: /[0-9]/.test(password) },
+    { label: 'Al menos un carácter especial', valid: /[^a-zA-Z0-9]/.test(password) },
+    { label: 'No puede comenzar con un número', valid: password.length === 0 || !/^[0-9]/.test(password) },
+  ];
+}
 
 export function SplashScreen() {
   const router = useRouter();
@@ -335,9 +350,16 @@ export function PasswordScreen() {
   const back = useSafeBack();
   const { registration, signIn, setRegistration } = useSession();
   const [apiError, setApiError] = useState('');
-  const { control, handleSubmit, formState: { errors, isSubmitting } } = useForm<z.infer<typeof passwordSchema>>({
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmation, setShowConfirmation] = useState(false);
+  const { control, handleSubmit, watch, formState: { errors, isSubmitting } } = useForm<z.infer<typeof passwordSchema>>({
     resolver: zodResolver(passwordSchema), defaultValues: { password: '', confirmation: '' },
   });
+  const currentPassword = watch('password');
+  const currentConfirmation = watch('confirmation');
+  const passwordChecks = getPasswordChecks(currentPassword);
+  const isPasswordValid = passwordRegex.test(currentPassword);
+  const passwordsMatch = currentPassword === currentConfirmation;
   const submit = handleSubmit(async (values) => {
     if (!registration?.verificationToken) {
       setApiError('Primero verificá el código de correo.');
@@ -349,7 +371,19 @@ export function PasswordScreen() {
       setRegistration(null);
       router.push({ pathname: '/onboarding-payment', params: { returnTo: registration.returnTo } });
     } catch (error) {
-      setApiError(error instanceof Error ? error.message : 'No fue posible completar el registro.');
+      const message = error instanceof Error ? error.message : '';
+      const normalizedMessage = message.toLowerCase();
+      if (
+        (error instanceof ApiError && error.status === 400)
+        || normalizedMessage.includes('faltan campos obligatorios')
+        || normalizedMessage.includes('contraseña')
+        || normalizedMessage.includes('password')
+        || normalizedMessage.includes('400')
+      ) {
+        setApiError('La contraseña no cumple los requisitos de seguridad. Revisá la lista de condiciones debajo.');
+        return;
+      }
+      setApiError(message || 'No fue posible completar el registro.');
     }
   });
   return (
@@ -359,10 +393,38 @@ export function PasswordScreen() {
         <StepIndicator steps={registrationSteps} current={2} />
         <Title>Crea tu contraseña</Title>
         <Body muted>Elegí una contraseña segura para proteger tus pujas, compras y documentación.</Body>
-        <Controller control={control} name="password" render={({ field }) => <Input label="Contraseña" secureTextEntry value={field.value} onChangeText={field.onChange} error={errors.password?.message} />} />
-        <Controller control={control} name="confirmation" render={({ field }) => <Input label="Confirma tu contraseña" secureTextEntry value={field.value} onChangeText={field.onChange} error={errors.confirmation?.message} />} />
+        <Controller control={control} name="password" render={({ field }) => (
+          <Input
+            label="Contraseña"
+            secureTextEntry={!showPassword}
+            value={field.value}
+            onChangeText={field.onChange}
+            error={errors.password?.message}
+            right={<IconButton icon={showPassword ? 'eye-off-outline' : 'eye-outline'} accessibilityLabel={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'} onPress={() => setShowPassword((visible) => !visible)} />}
+          />
+        )} />
+        <Controller control={control} name="confirmation" render={({ field }) => (
+          <Input
+            label="Confirma tu contraseña"
+            secureTextEntry={!showConfirmation}
+            value={field.value}
+            onChangeText={field.onChange}
+            error={errors.confirmation?.message}
+            right={<IconButton icon={showConfirmation ? 'eye-off-outline' : 'eye-outline'} accessibilityLabel={showConfirmation ? 'Ocultar confirmación de contraseña' : 'Mostrar confirmación de contraseña'} onPress={() => setShowConfirmation((visible) => !visible)} />}
+          />
+        )} />
+        <View style={styles.passwordRulesCard}>
+          {currentPassword && !isPasswordValid ? <Text style={styles.passwordRulesError}>La contraseña no cumple los requisitos de seguridad.</Text> : null}
+          <Text style={styles.passwordRulesTitle}>Tu contraseña debe cumplir:</Text>
+          {passwordChecks.map((rule) => (
+            <View key={rule.label} style={styles.passwordRuleRow}>
+              <Ionicons name={rule.valid ? 'checkmark-circle-outline' : 'close-circle-outline'} size={17} color={rule.valid ? colors.success : colors.textMuted} />
+              <Text style={[styles.passwordRuleText, rule.valid ? styles.passwordRuleValid : styles.passwordRuleInvalid]}>{rule.label}</Text>
+            </View>
+          ))}
+        </View>
         {apiError ? <ErrorNotice message={apiError} /> : null}
-        <Button label={isSubmitting ? 'Creando cuenta...' : 'Registrarse'} disabled={isSubmitting} onPress={submit} />
+        <Button label={isSubmitting ? 'Creando cuenta...' : 'Registrarse'} disabled={!isPasswordValid || !passwordsMatch || isSubmitting} onPress={submit} />
       </Card>
     </Screen>
   );
@@ -405,6 +467,13 @@ const styles = StyleSheet.create({
   errorCard: { backgroundColor: colors.dangerSoft, borderColor: '#F7C9C9', paddingVertical: spacing.sm },
   infoCard: { backgroundColor: colors.successSoft, borderColor: colors.success },
   error: { color: colors.danger, fontSize: typography.small, fontFamily: fonts.bold, textAlign: 'center' },
+  passwordRulesCard: { padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surfaceAlt, borderWidth: 1, borderColor: colors.border, gap: spacing.xs },
+  passwordRulesError: { color: colors.danger, fontFamily: fonts.bold, fontSize: typography.label, marginBottom: spacing.xs },
+  passwordRulesTitle: { color: colors.text, fontFamily: fonts.bold, fontSize: typography.label, marginBottom: spacing.xs },
+  passwordRuleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  passwordRuleText: { fontSize: typography.label, fontFamily: fonts.regular },
+  passwordRuleValid: { color: colors.success },
+  passwordRuleInvalid: { color: colors.textMuted },
   uploadRow: { flexDirection: 'row', gap: spacing.md },
   pending: { justifyContent: 'center' },
   pendingEmail: { color: colors.primary, fontSize: typography.body, fontFamily: fonts.medium },

@@ -31,6 +31,7 @@ export const API_BASE_URL = apiConfig.baseUrl;
 type BackendUser = { nombre: string; apellido: string; email: string; categoria: string; estado: string };
 type BackendLoginTwoFactorStart = { requires_2fa: boolean; challenge_id: string; email: string; message: string };
 type BackendLogin = { access_token: string; token_type: string; usuario: BackendUser };
+type VerifyCodeResponse = { message: string; token_verificacion?: string; tokenVerificacion?: string };
 type BackendAuction = {
   id: number; nombre: string; direccion: string; fecha_inicio: string; categoria: string; moneda: string;
   estado: string; total_articulos: number; rematador: string;
@@ -269,10 +270,13 @@ export const authService = {
     return request<{ message: string }>(apiRoutes.register, { method: 'POST', body: form });
   },
   async verify(email: string, code: string) {
-    return request<{ message: string; token_verificacion: string }>(apiRoutes.verifyCode, {
+    const response = await request<VerifyCodeResponse>(apiRoutes.verifyCode, {
       method: 'POST',
       body: JSON.stringify({ email, codigo: code }),
     });
+    const token = response.token_verificacion ?? response.tokenVerificacion;
+    if (!token) throw new Error('No se recibió token de verificación.');
+    return { message: response.message, token_verificacion: token };
   },
   async completeRegistration(token: string, password: string, passwordConfirmation: string) {
     const login = await request<BackendLogin>(apiRoutes.finishRegistration, {

@@ -112,17 +112,30 @@ export function Button({
   );
 }
 
-export function Input({ label, error, style, multiline, ...props }: TextInputProps & { label?: string; error?: string }) {
+export function Input({ label, error, style, multiline, right, ...props }: TextInputProps & { label?: string; error?: string; right?: ReactNode }) {
   return (
     <View style={styles.inputWrap}>
       {label ? <Text style={styles.inputLabel}>{label}</Text> : null}
-      <TextInput
-        placeholderTextColor={colors.textMuted}
-        style={[styles.input, multiline && styles.inputMultiline, error && styles.inputError, style]}
-        multiline={multiline}
-        textAlignVertical={multiline ? 'top' : 'center'}
-        {...props}
-      />
+      {right ? (
+        <View style={[styles.inputWithAction, error && styles.inputError]}>
+          <TextInput
+            placeholderTextColor={colors.textMuted}
+            style={[styles.input, styles.inputWithActionField, multiline && styles.inputMultiline, style]}
+            multiline={multiline}
+            textAlignVertical={multiline ? 'top' : 'center'}
+            {...props}
+          />
+          {right}
+        </View>
+      ) : (
+        <TextInput
+          placeholderTextColor={colors.textMuted}
+          style={[styles.input, multiline && styles.inputMultiline, error && styles.inputError, style]}
+          multiline={multiline}
+          textAlignVertical={multiline ? 'top' : 'center'}
+          {...props}
+        />
+      )}
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
     </View>
   );
@@ -447,6 +460,8 @@ const styles = StyleSheet.create({
   inputWrap: { gap: spacing.xs },
   inputLabel: { fontSize: typography.label, color: colors.textMuted, fontFamily: fonts.bold },
   input: { minHeight: 52, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: spacing.md, color: colors.text, backgroundColor: colors.surface, fontFamily: fonts.regular },
+  inputWithAction: { minHeight: 52, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingRight: spacing.xs, backgroundColor: colors.surface },
+  inputWithActionField: { flex: 1, borderWidth: 0, backgroundColor: 'transparent' },
   inputMultiline: { minHeight: 110, paddingTop: spacing.md },
   inputError: { borderColor: colors.danger },
   selectInput: { minHeight: 52, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: spacing.md, backgroundColor: colors.surface, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },

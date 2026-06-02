@@ -24,6 +24,9 @@
 - [ ] Registro permite cargar DNI frente y dorso.
 - [ ] Verificacion permite ingresar el codigo recibido.
 - [ ] Crear contrasena finaliza el registro cuando backend soporte el contrato.
+- [ ] Paso Clave muestra en tiempo real requisitos de seguridad, incluyendo mayuscula, numero, caracter especial y que no comience con numero.
+- [ ] Paso Clave mantiene Registrarse deshabilitado hasta que ambas contrasenas validas coincidan.
+- [ ] Un `400` al completar registro muestra un mensaje claro sobre requisitos de contrasena.
 
 ## Subastas
 

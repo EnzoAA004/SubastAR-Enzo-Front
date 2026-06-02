@@ -16,7 +16,7 @@ Estados usados:
 | Verificar login 2FA | `POST` | `/auth/login/verificar-2fa` | `{ challenge_id, codigo }` | `{ access_token, token_type, usuario }` | Confirmar backend |
 | Reenviar login 2FA | `POST` | `/auth/login/reenviar-2fa` | `{ challenge_id }` | nuevo `{ requires_2fa, challenge_id, email, message }` | Confirmar backend |
 | Registro con DNI | `POST` | `/auth/registro` | multipart: datos, `foto_dni_frente`, `foto_dni_dorso` | `{ message }` | Confirmar backend |
-| Verificar codigo | `POST` | `/auth/verificar-codigo` | `{ email, codigo }` | `{ message, token_verificacion }` | Pendiente backend |
+| Verificar codigo | `POST` | `/auth/verificar-codigo` | `{ email, codigo }` | `{ message, tokenVerificacion }` o variante `token_verificacion` | Pendiente backend |
 | Completar registro | `POST` | `/auth/completar-registro` | `{ token_verificacion, password, password_confirmacion }` | `{ access_token, usuario }` | Pendiente backend |
 | Logout | `POST` | `/auth/logout` | sin body | sin contenido | Confirmar backend |
 
