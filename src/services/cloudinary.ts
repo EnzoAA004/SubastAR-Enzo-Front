@@ -65,10 +65,10 @@ export async function uploadImageToCloudinary(file: FileUpload): Promise<Cloudin
     const errorText = await response.text().catch(() => '');
     if (response.status === 401 && errorText.includes('Unknown API key')) {
       throw new Error(
-        `Cloudinary rechazo la configuracion. Verifica que el cloud name "${cloudName}" coincida exactamente con Cloudinary Console y que el preset "${unsignedUploadPreset}" exista en ese entorno como Unsigned.`,
+        `Cloudinary rechazó la configuración. Verificá que el cloud name "${cloudName}" coincida exactamente con Cloudinary Console y que el preset "${unsignedUploadPreset}" exista en ese entorno como Unsigned.`,
       );
     }
-    throw new Error(`Error subiendo imagen a Cloudinary: ${response.status}${errorText ? ` ${errorText}` : ''}`);
+    throw new Error(`No pudimos subir la imagen a Cloudinary. Intentá nuevamente.${response.status ? ` Código ${response.status}.` : ''}`);
   }
 
   return response.json() as Promise<CloudinaryUploadResult>;

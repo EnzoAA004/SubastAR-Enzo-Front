@@ -11,6 +11,7 @@ import { colors, fonts, radius, spacing, typography } from '@/constants/theme';
 import { useSafeBack } from '@/hooks/use-safe-back';
 import { useSession } from '@/providers/app-provider';
 import { assetService, authService, chatService, insuranceService, paymentService, profileService, purchaseService } from '@/services/api';
+import { errorToUserMessage } from '@/services/errors';
 import { explainFileAccess, permissionDeniedMessage, requestMediaLibraryPermission } from '@/services/permissions';
 import type { Country, FileUpload, PaymentMethodKind } from '@/types/domain';
 
@@ -229,9 +230,9 @@ export function ParticipationHistoryScreen() {
       <Header title="Historial de participaciones" onBack={back} />
       <FilterTabs options={['Todas', 'Ganadas', 'Perdidas'] as const} value={filter} onChange={setFilter} />
       {filter === 'Todas' ? <Card style={styles.policy}>
-        <Body muted>Por ahora se muestran participaciones ganadas asociadas a tus compras. Las demás estarán disponibles cuando la API exponga el historial completo.</Body>
+        <Body muted>Por ahora se muestran participaciones ganadas asociadas a tus compras. Las demás estarán disponibles cuando el servidor informe el historial completo.</Body>
       </Card> : filter === 'Perdidas' ? <Card style={styles.policy}>
-        <Body muted>Las participaciones no ganadas estarán disponibles cuando la API exponga su historial.</Body>
+        <Body muted>Las participaciones no ganadas estarán disponibles cuando el servidor informe su historial.</Body>
       </Card> : null}
       {isLoading ? <LoadingState /> : isError ? <ErrorState onRetry={() => refetch()} /> : visiblePurchases.length ? visiblePurchases.map((purchase) => (
         <Card key={purchase.id} style={styles.itemCard}>
@@ -481,7 +482,7 @@ export function PurchasePaymentScreen() {
       )}
       <Button label={pay.isPending ? 'Confirmando pago...' : 'Confirmar pago'} disabled={!paymentId || pay.isPending} onPress={() => pay.mutate()} />
       {!usablePayments.length ? <Button label="Agregar medio de pago" variant="secondary" onPress={() => router.push('/profile/payments')} /> : null}
-      {pay.isError ? <Body muted>{pay.error instanceof Error ? pay.error.message : 'No fue posible regularizar el pago.'}</Body> : null}
+      {pay.isError ? <Body muted>{errorToUserMessage(pay.error, 'No fue posible regularizar el pago.')}</Body> : null}
     </Screen>
   );
 }
@@ -640,7 +641,7 @@ export function ExtendPolicyScreen() {
       <Input label="Nuevo valor asegurado" keyboardType="number-pad" value={newValue} onChangeText={setNewValue} />
       <Button label={extend.isPending ? 'Solicitando...' : 'Confirmar solicitud'} disabled={!newValue || Number(newValue) <= data.insuredValue || extend.isPending} onPress={() => extend.mutate()} />
       {extend.isSuccess ? <StatusCard icon="checkmark-circle-outline" title="Solicitud registrada" message="La nueva cobertura fue actualizada correctamente." tone="green" /> : null}
-      {extend.isError ? <Body muted>{extend.error instanceof Error ? extend.error.message : 'No fue posible ampliar la cobertura.'}</Body> : null}
+      {extend.isError ? <Body muted>{errorToUserMessage(extend.error, 'No fue posible ampliar la cobertura.')}</Body> : null}
     </Screen>
   );
 }
@@ -758,7 +759,7 @@ export function ConversationScreen() {
         <Input placeholder="Escribí tu consulta..." value={message} onChangeText={setMessage} />
         <Button label={send.isPending ? 'Enviando...' : 'Enviar'} disabled={!message.trim() || send.isPending} onPress={() => send.mutate()} />
       </View>
-      {send.isError ? <Body muted>{send.error instanceof Error ? send.error.message : 'No fue posible enviar el mensaje.'}</Body> : null}
+      {send.isError ? <Body muted>{errorToUserMessage(send.error, 'No fue posible enviar el mensaje.')}</Body> : null}
     </Screen>
   );
 }
@@ -844,7 +845,7 @@ export function EditProfileScreen() {
         label="País de origen"
         value={selectedCountry ? `${selectedCountry.name} (${selectedCountry.code})` : country || data.country}
         placeholder={loadingCountries ? 'Cargando países...' : 'Seleccionar país'}
-        helperText={countriesError ? 'No se pudieron cargar los países. Podés reintentar más tarde.' : 'Mostramos el listado recibido desde /api/v1/paises.'}
+        helperText={countriesError ? 'No se pudieron cargar los países. Podés reintentar más tarde.' : 'Mostramos el listado recibido por el servidor.'}
         onPress={() => setCountryPickerVisible(true)}
       />
       <CountryPickerModal
@@ -858,7 +859,7 @@ export function EditProfileScreen() {
         }}
       />
       <Button label={save.isPending ? 'Guardando...' : 'Guardar cambios'} disabled={save.isPending} onPress={() => save.mutate()} />
-      {save.isError ? <Body muted>{save.error instanceof Error ? save.error.message : 'No fue posible guardar.'}</Body> : null}
+      {save.isError ? <Body muted>{errorToUserMessage(save.error, 'No fue posible guardar.')}</Body> : null}
     </Screen>
   );
 }
@@ -949,7 +950,7 @@ export function PaymentAddScreen() {
         {pickerError ? <StatusState icon="alert-circle-outline" title="No pudimos acceder a la foto" message={pickerError} tone="red" /> : null}
       </> : null}
       <Button label={save.isPending ? 'Guardando...' : submitLabel} disabled={!canSave || save.isPending} onPress={() => save.mutate()} />
-      {save.isError ? <Body muted>{save.error instanceof Error ? save.error.message : 'No fue posible agregar el medio.'}</Body> : null}
+      {save.isError ? <Body muted>{errorToUserMessage(save.error, 'No fue posible agregar el medio.')}</Body> : null}
     </Screen>
   );
 }
@@ -1015,7 +1016,7 @@ export function AssetDetailScreen() {
         <Button label="Rechazar condiciones" variant="secondary" onPress={() => accept.mutate(false)} />
       </> : null}
       {accept.isSuccess ? <StatusCard icon="checkmark-circle-outline" title="Respuesta enviada" message="Registramos tu decisión sobre las condiciones del bien." tone="green" /> : null}
-      {accept.isError ? <Body muted>{accept.error instanceof Error ? accept.error.message : 'No fue posible registrar la decisión.'}</Body> : null}
+      {accept.isError ? <Body muted>{errorToUserMessage(accept.error, 'No fue posible registrar la decisión.')}</Body> : null}
     </Screen>
   );
 }
@@ -1196,7 +1197,7 @@ export function AssetFullDetailScreen() {
               <Button label={updateAsset.isPending ? 'Guardando...' : 'Guardar cambios'} disabled={updateAsset.isPending || invalidSuggestedBasePrice || (!!suggestedBasePrice && !suggestedBasePriceCurrency)} onPress={() => updateAsset.mutate()} />
               <Button label="Cancelar" variant="secondary" disabled={updateAsset.isPending} onPress={() => setEditing(false)} />
             </View>
-            {updateAsset.isError ? <Body muted>{updateAsset.error instanceof Error ? updateAsset.error.message : 'No fue posible guardar los cambios.'}</Body> : null}
+            {updateAsset.isError ? <Body muted>{errorToUserMessage(updateAsset.error, 'No fue posible guardar los cambios.')}</Body> : null}
           </>
         )}
       </Card>

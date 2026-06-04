@@ -1,25 +1,24 @@
 import { Ionicons } from '@expo/vector-icons';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { type Href, useLocalSearchParams, useRouter } from 'expo-router';
 import { Controller, useForm } from 'react-hook-form';
 import { useEffect, useState } from 'react';
 import { Alert, Platform, StyleSheet, Text, View } from 'react-native';
-import Animated, { Easing, FadeIn, FadeOut, Keyframe, SlideInUp, ZoomIn } from 'react-native-reanimated';
+import Animated, { Easing, FadeIn, SlideInUp, ZoomIn, interpolate, useAnimatedStyle, useSharedValue, withRepeat, withSequence, withTiming } from 'react-native-reanimated';
 import { z } from 'zod';
 
-import { BrandLogo } from '@/components/brand/logo';
+import { BrandIcon, BrandLogo, BrandWordmark } from '@/components/brand/logo';
 import { ActionRow, Body, Button, Card, Header, IconButton, InfoTile, Input, Screen, SectionLabel, StatusPanel, StepIndicator, Title, UploadBox } from '@/components/ui/primitives';
 import { colors, fonts, radius, spacing, typography } from '@/constants/theme';
 import { useSafeBack } from '@/hooks/use-safe-back';
 import { useSession } from '@/providers/app-provider';
 import { authService } from '@/services/api';
+import { errorToUserMessage, getServerConnectionMessage } from '@/services/errors';
 import { ApiError, ApiNetworkError } from '@/services/http';
 import { explainFileAccess, permissionDeniedMessage, requestMediaLibraryPermission } from '@/services/permissions';
 import type { FileUpload } from '@/types/domain';
 
-const MOCK_SPLASH_LOGO_SOURCE: ReturnType<typeof require> | null = null;
 const resendCooldownSeconds = 30;
 
 function ErrorNotice({ message }: { message: string }) {
@@ -39,10 +38,10 @@ const login2faSchema = z.object({
 });
 
 const registerSchema = z.object({
-  name: z.string().min(2, 'Ingresa tu nombre.'),
-  surname: z.string().min(2, 'Ingresa tu apellido.'),
+  name: z.string().min(2, 'Ingresá tu nombre.'),
+  surname: z.string().min(2, 'Ingresá tu apellido.'),
   email: z.email('Correo inválido.'),
-  address: z.string().min(5, 'Ingresa tu domicilio.'),
+  address: z.string().min(5, 'Ingresá tu domicilio.'),
   country: z.string().min(2, 'Ingresá tu país.'),
 });
 
@@ -57,14 +56,14 @@ const passwordSchema = z.object({
 
 const registrationSteps = ['Datos', 'Código', 'Clave', 'Pago'];
 
-const forgotPasswordSchema = z.object({ email: z.email('Ingresa un correo valido.') });
+const forgotPasswordSchema = z.object({ email: z.email('Ingresá un correo valido.') });
 const resetPasswordSchema = z.object({
-  code: z.string().min(4, 'Ingresa el codigo recibido.'),
+  code: z.string().min(4, 'Ingresá el código recibido.'),
   password: z.string()
-    .min(8, 'La contrasena debe tener minimo 8 caracteres.')
-    .regex(passwordRegex, 'La contrasena no cumple los requisitos de seguridad.'),
-  confirmation: z.string().min(8, 'Confirma tu contrasena.'),
-}).refine((values) => values.password === values.confirmation, { path: ['confirmation'], message: 'Las contrasenas no coinciden.' });
+    .min(8, 'La contraseña debe tener mínimo 8 caracteres.')
+    .regex(passwordRegex, 'La contraseña no cumple los requisitos de seguridad.'),
+  confirmation: z.string().min(8, 'Confirma tu contraseña.'),
+}).refine((values) => values.password === values.confirmation, { path: ['confirmation'], message: 'Las contraseñas no coinciden.' });
 
 function getPasswordChecks(password: string) {
   return [
@@ -77,14 +76,14 @@ function getPasswordChecks(password: string) {
 }
 
 function messageForAuthError(error: unknown, fallback: string) {
-  if (error instanceof ApiNetworkError) return 'Sin conexion con SubastAR. Revisa tu internet e intenta nuevamente.';
-  return error instanceof Error ? error.message : fallback;
+  if (error instanceof ApiNetworkError) return getServerConnectionMessage();
+  return errorToUserMessage(error, fallback);
 }
 
 function messageForLoginError(error: unknown) {
-  if (error instanceof ApiNetworkError) return 'Sin conexion con SubastAR. Revisa tu internet e intenta nuevamente.';
-  if (error instanceof ApiError && [400, 401, 404].includes(error.status)) return 'Email o contrasena incorrectos.';
-  return 'Email o contrasena incorrectos.';
+  if (error instanceof ApiNetworkError) return getServerConnectionMessage();
+  if (error instanceof ApiError && [400, 401, 404].includes(error.status)) return 'Email o contraseña incorrectos.';
+  return 'Email o contraseña incorrectos.';
 }
 
 function confirmCancelRegistration(onConfirm: () => void) {
@@ -99,43 +98,80 @@ function confirmCancelRegistration(onConfirm: () => void) {
   ]);
 }
 
-const splashPulseKeyframe = new Keyframe({
-  0: { transform: [{ scale: 0.88 }], opacity: 0.68 },
-  45: { transform: [{ scale: 1.08 }], opacity: 1, easing: Easing.out(Easing.cubic) },
-  100: { transform: [{ scale: 0.95 }], opacity: 0.72, easing: Easing.inOut(Easing.quad) },
-});
-
 export function SplashScreen() {
   const router = useRouter();
   const { loading, session } = useSession();
+  const logoScale = useSharedValue(0.86);
+  const logoOpacity = useSharedValue(0);
+  const progress = useSharedValue(0);
+  const float = useSharedValue(0);
+
+  useEffect(() => {
+    logoScale.value = withTiming(1, { duration: 720, easing: Easing.out(Easing.cubic) });
+    logoOpacity.value = withTiming(1, { duration: 620, easing: Easing.out(Easing.quad) });
+    progress.value = withTiming(1, { duration: 1600, easing: Easing.inOut(Easing.cubic) });
+    float.value = withRepeat(
+      withSequence(
+        withTiming(1, { duration: 1800, easing: Easing.inOut(Easing.quad) }),
+        withTiming(0, { duration: 1800, easing: Easing.inOut(Easing.quad) }),
+      ),
+      -1,
+    );
+  }, [float, logoOpacity, logoScale, progress]);
+
   useEffect(() => {
     if (!loading) {
-      const timer = setTimeout(() => router.replace(session ? '/(tabs)' : '/welcome'), 1500);
+      const timer = setTimeout(() => router.replace(session ? '/(tabs)' : '/welcome'), 2000);
       return () => clearTimeout(timer);
     }
   }, [loading, router, session]);
+
+  const logoAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: logoOpacity.value,
+    transform: [{ scale: logoScale.value }],
+  }));
+
+  const progressAnimatedStyle = useAnimatedStyle(() => ({
+    width: interpolate(progress.value, [0, 1], [0, 180]),
+  }));
+
+  const glowAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateY: interpolate(float.value, [0, 1], [-8, 8]) },
+      { translateX: interpolate(float.value, [0, 1], [-5, 5]) },
+      { scale: interpolate(float.value, [0, 1], [0.98, 1.04]) },
+    ],
+  }));
+
   return (
-    <Screen scroll={false} style={styles.splash}>
-      <Animated.View entering={FadeIn.duration(350)} exiting={FadeOut.duration(250)} style={styles.splashBackdrop}>
-        <Animated.View entering={splashPulseKeyframe.duration(1800)} style={[styles.splashOrb, styles.splashOrbOne]} />
-        <Animated.View entering={splashPulseKeyframe.duration(2200)} style={[styles.splashOrb, styles.splashOrbTwo]} />
-        <Animated.View entering={ZoomIn.duration(620).easing(Easing.out(Easing.back(1.2)))} style={styles.splashLogoShell}>
-          {MOCK_SPLASH_LOGO_SOURCE ? (
-            <Image source={MOCK_SPLASH_LOGO_SOURCE} style={styles.splashLogoImage} contentFit="contain" />
-          ) : (
-            <BrandLogo iconSize={116} />
-          )}
+    <Screen scroll={false} style={styles.splashScreen}>
+      <View style={styles.splashBackground}>
+        <Animated.View style={[styles.splashGlow, styles.splashGlowTop, glowAnimatedStyle]} />
+        <Animated.View style={[styles.splashGlow, styles.splashGlowBottom, glowAnimatedStyle]} />
+        <View style={styles.splashRingOne} />
+        <View style={styles.splashRingTwo} />
+
+        <Animated.View entering={ZoomIn.duration(650).easing(Easing.out(Easing.cubic))} style={[styles.splashBrandBlock, logoAnimatedStyle]}>
+          <View style={styles.splashLogoCircle}>
+            <BrandIcon size={104} />
+          </View>
+          <View style={styles.splashTitleBlock}>
+            <BrandWordmark />
+          </View>
         </Animated.View>
-        <Animated.View entering={SlideInUp.delay(180).duration(520)} style={styles.splashCopy}>
-          <Title>SubastAR</Title>
-          <Body muted>Subastas online con una experiencia premium, clara y confiable.</Body>
+
+        <Animated.View entering={SlideInUp.delay(250).duration(550)} style={styles.splashFeaturePill}>
+          <Ionicons name="shield-checkmark-outline" size={18} color={colors.primary} />
+          <Text style={styles.splashFeatureText}>Catálogos verificados · Pujas en vivo</Text>
         </Animated.View>
-        <View style={styles.splashDots}>
-          {[0, 1, 2].map((dot) => (
-            <Animated.View key={dot} entering={ZoomIn.delay(320 + dot * 140).duration(420)} style={styles.splashDot} />
-          ))}
-        </View>
-      </Animated.View>
+
+        <Animated.View entering={FadeIn.delay(420).duration(500)} style={styles.splashProgressBlock}>
+          <View style={styles.splashProgressTrack}>
+            <Animated.View style={[styles.splashProgressFill, progressAnimatedStyle]} />
+          </View>
+          <Text style={styles.splashLoadingText}>Cargando experiencia segura...</Text>
+        </Animated.View>
+      </View>
     </Screen>
   );
 }
@@ -198,9 +234,9 @@ export function LoginScreen() {
           <Input label="Contraseña" secureTextEntry value={value} onChangeText={onChange} error={errors.password?.message} />
         )} />
         {apiError ? <ErrorNotice message={apiError} /> : null}
-        <Button label={isSubmitting ? 'Ingresando...' : 'Iniciar sesión'} disabled={isSubmitting} onPress={submit} />
+        <Button label={isSubmitting ? 'Ingresándo...' : 'Iniciar sesión'} disabled={isSubmitting} onPress={submit} />
         <Button label="¿No tienes una cuenta? Regístrate" variant="ghost" onPress={() => router.push({ pathname: '/register', params: { returnTo } })} />
-        <Button label="Olvidaste tu contrasena?" variant="ghost" onPress={() => router.push('/forgot-password' as Href)} />
+        <Button label="Olvidaste tu contraseña?" variant="ghost" onPress={() => router.push('/forgot-password' as Href)} />
         <View style={styles.centerSeparator}><Body muted>O</Body></View>
         <Button label="Continúa como un invitado" variant="ghost" onPress={() => { enterAsGuest(); router.replace('/(tabs)'); }} />
       </Card>
@@ -233,7 +269,7 @@ export function LoginTwoFactorScreen() {
       await signIn(session);
       router.replace((returnTo || '/(tabs)') as Href);
     } catch (error) {
-      setApiError(error instanceof Error ? error.message : 'Código inválido.');
+      setApiError(errorToUserMessage(error, 'Código inválido.'));
     }
   });
   async function resend() {
@@ -249,7 +285,7 @@ export function LoginTwoFactorScreen() {
       setCurrentEmail(response.email);
       setInfoMessage('Te enviamos un nuevo código. El código anterior ya no es válido.');
     } catch (error) {
-      setApiError(error instanceof Error ? error.message : 'No fue posible reenviar el código.');
+      setApiError(errorToUserMessage(error, 'No fue posible reenviar el código.'));
     } finally {
       setIsResending(false);
     }
@@ -261,7 +297,7 @@ export function LoginTwoFactorScreen() {
         <StatusPanel
           icon="mail-unread-outline"
           title="Revisá tu correo"
-          message={`Enviamos un código de seguridad a ${currentEmail || 'tu correo'}. Ingresalo para completar el inicio de sesión.`}
+          message={`Enviamos un código de seguridad a ${currentEmail || 'tu correo'}. Ingresálo para completar el inicio de sesión.`}
           tone="green"
         />
         <Controller control={control} name="code" render={({ field }) => (
@@ -421,7 +457,7 @@ export function VerifyScreen() {
       setRegistration({ ...registration, verificationToken: response.token_verificacion });
       router.push('/password');
     } catch (error) {
-      setApiError(error instanceof Error ? error.message : 'Código inválido.');
+      setApiError(errorToUserMessage(error, 'Código inválido.'));
     }
   });
   return (
@@ -436,7 +472,7 @@ export function VerifyScreen() {
         <Body muted>¿No recibiste el código?</Body>
         {infoMessage ? <Card style={styles.infoCard}><Body>{infoMessage}</Body></Card> : null}
         <Button
-          label={isResending ? 'Reenviando...' : cooldown > 0 ? `Reenviar codigo (${cooldown}s)` : 'Reenviar codigo'}
+          label={isResending ? 'Reenviando...' : cooldown > 0 ? `Reenviar código (${cooldown}s)` : 'Reenviar código'}
           variant="secondary"
           disabled={isResending || cooldown > 0}
           onPress={async () => {
@@ -449,10 +485,10 @@ export function VerifyScreen() {
               setInfoMessage('');
               setResending(true);
               await authService.resendRegistrationCode(registration.email);
-              setInfoMessage('Te enviamos un nuevo codigo. El codigo anterior ya no es valido.');
+              setInfoMessage('Te enviamos un nuevo código. El código anterior ya no es valido.');
               setCooldown(resendCooldownSeconds);
             } catch (error) {
-              setApiError(messageForAuthError(error, 'No fue posible reenviar el codigo.'));
+              setApiError(messageForAuthError(error, 'No fue posible reenviar el código.'));
             } finally {
               setResending(false);
             }
@@ -505,7 +541,7 @@ export function PasswordScreen() {
       setRegistration(null);
       router.push({ pathname: '/onboarding-payment', params: { returnTo: registration.returnTo } });
     } catch (error) {
-      const message = error instanceof Error ? error.message : '';
+      const message = errorToUserMessage(error, '');
       const normalizedMessage = message.toLowerCase();
       if (
         (error instanceof ApiError && error.status === 400)
@@ -578,19 +614,19 @@ export function ForgotPasswordScreen() {
       await authService.requestPasswordReset(email);
       router.push(`/reset-password?email=${encodeURIComponent(email)}` as Href);
     } catch (error) {
-      setApiError(messageForAuthError(error, 'No fue posible enviar el codigo de recuperacion.'));
+      setApiError(messageForAuthError(error, 'No fue posible enviar el código de recuperacion.'));
     }
   });
   return (
     <Screen>
-      <Header title="Recuperar contrasena" onBack={back} />
+      <Header title="Recuperar contraseña" onBack={back} />
       <Card style={styles.formCard}>
-        <StatusPanel icon="mail-outline" title="Codigo de recuperacion" message="Ingresa tu correo y te enviaremos un codigo para crear una nueva contrasena." />
+        <StatusPanel icon="mail-outline" title="Código de recuperacion" message="Ingresá tu correo y te enviaremos un código para crear una nueva contraseña." />
         <Controller control={control} name="email" render={({ field }) => (
           <Input label="Correo electronico" keyboardType="email-address" autoCapitalize="none" value={field.value} onChangeText={field.onChange} error={errors.email?.message} />
         )} />
         {apiError ? <ErrorNotice message={apiError} /> : null}
-        <Button label={isSubmitting ? 'Enviando...' : 'Enviar codigo'} disabled={isSubmitting} onPress={submit} />
+        <Button label={isSubmitting ? 'Enviando...' : 'Enviar código'} disabled={isSubmitting} onPress={submit} />
         <Button label="Volver al login" variant="ghost" onPress={() => router.replace('/login')} />
       </Card>
     </Screen>
@@ -625,35 +661,35 @@ export function ResetPasswordScreen() {
       setInfoMessage('Contrasena actualizada. Ya podes iniciar sesion.');
       setTimeout(() => router.replace('/login'), 900);
     } catch (error) {
-      const message = error instanceof Error ? error.message : '';
+      const message = errorToUserMessage(error, '');
       if (error instanceof ApiError && error.status === 400 || message.toLowerCase().includes('password') || message.toLowerCase().includes('contras')) {
-        setApiError('La contrasena no cumple los requisitos de seguridad.');
+        setApiError('La contraseña no cumple los requisitos de seguridad.');
         return;
       }
-      setApiError(messageForAuthError(error, 'No fue posible actualizar la contrasena.'));
+      setApiError(messageForAuthError(error, 'No fue posible actualizar la contraseña.'));
     }
   });
   return (
     <Screen>
-      <Header title="Nueva contrasena" onBack={back} />
+      <Header title="Nueva contraseña" onBack={back} />
       <Card style={styles.formCard}>
-        <StatusPanel icon="shield-checkmark-outline" title="Completa la recuperacion" message={email ? `Codigo enviado a ${email}` : 'Ingresa el codigo recibido y tu nueva contrasena.'} />
+        <StatusPanel icon="shield-checkmark-outline" title="Completa la recuperacion" message={email ? `Código enviado a ${email}` : 'Ingresá el código recibido y tu nueva contraseña.'} />
         <Controller control={control} name="code" render={({ field }) => (
-          <Input label="Codigo" placeholder="0000" keyboardType="number-pad" value={field.value} onChangeText={field.onChange} error={errors.code?.message} />
+          <Input label="Código" placeholder="0000" keyboardType="number-pad" value={field.value} onChangeText={field.onChange} error={errors.code?.message} />
         )} />
         <Controller control={control} name="password" render={({ field }) => (
           <Input
-            label="Nueva contrasena"
+            label="Nueva contraseña"
             secureTextEntry={!showPassword}
             value={field.value}
             onChangeText={field.onChange}
             error={errors.password?.message}
-            right={<IconButton icon={showPassword ? 'eye-off-outline' : 'eye-outline'} accessibilityLabel={showPassword ? 'Ocultar contrasena' : 'Mostrar contrasena'} onPress={() => setShowPassword((visible) => !visible)} />}
+            right={<IconButton icon={showPassword ? 'eye-off-outline' : 'eye-outline'} accessibilityLabel={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'} onPress={() => setShowPassword((visible) => !visible)} />}
           />
         )} />
         <Controller control={control} name="confirmation" render={({ field }) => (
           <Input
-            label="Confirmar contrasena"
+            label="Confirmar contraseña"
             secureTextEntry={!showConfirmation}
             value={field.value}
             onChangeText={field.onChange}
@@ -662,8 +698,8 @@ export function ResetPasswordScreen() {
           />
         )} />
         <View style={styles.passwordRulesCard}>
-          {currentPassword && !isPasswordValid ? <Text style={styles.passwordRulesError}>La contrasena no cumple los requisitos de seguridad.</Text> : null}
-          <Text style={styles.passwordRulesTitle}>Tu contrasena debe cumplir:</Text>
+          {currentPassword && !isPasswordValid ? <Text style={styles.passwordRulesError}>La contraseña no cumple los requisitos de seguridad.</Text> : null}
+          <Text style={styles.passwordRulesTitle}>Tu contraseña debe cumplir:</Text>
           {passwordChecks.map((rule) => (
             <View key={rule.label} style={styles.passwordRuleRow}>
               <Ionicons name={rule.valid ? 'checkmark-circle-outline' : 'close-circle-outline'} size={17} color={rule.valid ? colors.success : colors.textMuted} />
@@ -673,7 +709,7 @@ export function ResetPasswordScreen() {
         </View>
         {infoMessage ? <Card style={styles.infoCard}><Body>{infoMessage}</Body></Card> : null}
         {apiError ? <ErrorNotice message={apiError} /> : null}
-        <Button label={isSubmitting ? 'Actualizando...' : 'Actualizar contrasena'} disabled={!isPasswordValid || !passwordsMatch || isSubmitting} onPress={submit} />
+        <Button label={isSubmitting ? 'Actualizando...' : 'Actualizar contraseña'} disabled={!isPasswordValid || !passwordsMatch || isSubmitting} onPress={submit} />
       </Card>
     </Screen>
   );
@@ -704,16 +740,38 @@ export function OnboardingPaymentScreen() {
 }
 
 const styles = StyleSheet.create({
-  splash: { alignItems: 'center', justifyContent: 'center', gap: spacing.md },
-  splashBackdrop: { alignItems: 'center', justifyContent: 'center', gap: spacing.lg, width: '100%', minHeight: '100%', overflow: 'hidden' },
-  splashOrb: { position: 'absolute', borderRadius: radius.pill, backgroundColor: colors.primarySoft },
-  splashOrbOne: { width: 260, height: 260, top: 80, right: -90 },
-  splashOrbTwo: { width: 210, height: 210, bottom: 80, left: -70, backgroundColor: colors.successSoft },
-  splashLogoShell: { width: 190, height: 190, borderRadius: 42, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.primaryBorder },
-  splashLogoImage: { width: 142, height: 142 },
-  splashCopy: { alignItems: 'center', gap: spacing.xs, maxWidth: 330 },
-  splashDots: { flexDirection: 'row', gap: spacing.sm },
-  splashDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.primary },
+  splashScreen: { flex: 1, backgroundColor: colors.background },
+  splashBackground: { flex: 1, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', paddingHorizontal: spacing.xl },
+  splashGlow: { position: 'absolute', width: 320, height: 320, borderRadius: 160, backgroundColor: colors.primarySoft, opacity: 0.62 },
+  splashGlowTop: { top: -110, right: -90 },
+  splashGlowBottom: { bottom: -130, left: -100, opacity: 0.45 },
+  splashRingOne: { position: 'absolute', width: 420, height: 420, borderRadius: 210, borderWidth: 1, borderColor: colors.primaryBorder, opacity: 0.35, top: -140, left: -150 },
+  splashRingTwo: { position: 'absolute', width: 300, height: 300, borderRadius: 150, borderWidth: 1, borderColor: colors.border, opacity: 0.55, bottom: -120, right: -80 },
+  splashBrandBlock: { alignItems: 'center', justifyContent: 'center', gap: spacing.lg },
+  splashLogoCircle: {
+    width: 156,
+    height: 156,
+    borderRadius: 78,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.primaryBorder,
+    shadowColor: colors.primary,
+    shadowOpacity: 0.18,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 8,
+  },
+  splashTitleBlock: { alignItems: 'center', gap: spacing.xs },
+  splashTitle: { fontSize: 34, lineHeight: 40, fontFamily: fonts.black, color: colors.textStrong, textAlign: 'center', letterSpacing: -0.8 },
+  splashSubtitle: { fontSize: typography.body, fontFamily: fonts.medium, color: colors.textMuted, textAlign: 'center' },
+  splashFeaturePill: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginTop: spacing.xl, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radius.pill, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.primaryBorder },
+  splashFeatureText: { color: colors.primary, fontFamily: fonts.medium, fontSize: typography.small },
+  splashProgressBlock: { position: 'absolute', bottom: spacing.xl, alignItems: 'center', gap: spacing.sm },
+  splashProgressTrack: { width: 180, height: 5, borderRadius: radius.pill, backgroundColor: colors.surfaceAlt, overflow: 'hidden' },
+  splashProgressFill: { height: '100%', borderRadius: radius.pill, backgroundColor: colors.primary },
+  splashLoadingText: { color: colors.textMuted, fontFamily: fonts.medium, fontSize: typography.caption },
   welcome: { justifyContent: 'space-between' },
   welcomeHero: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.lg, backgroundColor: colors.surfaceAlt },
   actionsCard: { gap: spacing.md },

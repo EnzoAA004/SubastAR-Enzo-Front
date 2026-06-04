@@ -11,6 +11,7 @@ import { Badge, Body, Button, Card, Divider, Header, IconButton, InfoTile, Input
 import { colors, fonts, radius, spacing, typography } from '@/constants/theme';
 import { useSafeBack } from '@/hooks/use-safe-back';
 import { assetService } from '@/services/api';
+import { errorToUserMessage } from '@/services/errors';
 import { explainFileAccess, permissionDeniedMessage, requestMediaLibraryPermission } from '@/services/permissions';
 import type { FileUpload } from '@/types/domain';
 
@@ -130,7 +131,7 @@ export function SellStartScreen() {
         {category === 'otro' ? <Input label="Información adicional" value={additional} onChangeText={setAdditional} /> : null}
         <Divider />
         <Button label={save.isPending ? 'Guardando...' : 'Continuar con fotografías'} disabled={!name || !description || Number(amount) <= 0 || save.isPending} onPress={() => save.mutate()} />
-        {save.isError ? <Body muted>{save.error instanceof Error ? save.error.message : 'No fue posible iniciar la solicitud.'}</Body> : null}
+        {save.isError ? <Body muted>{errorToUserMessage(save.error, 'No fue posible iniciar la solicitud.')}</Body> : null}
       </> : null}
     </Screen>
   );
@@ -187,7 +188,7 @@ export function SellPhotosScreen() {
       </View>
       <Badge label={`${photos.length} de 8 fotos cargadas`} tone={photos.length >= 6 ? 'green' : 'yellow'} />
       <Button label={upload.isPending ? 'Subiendo...' : 'Continuar'} disabled={photos.length < 6 || upload.isPending} onPress={() => upload.mutate()} />
-      {upload.isError ? <Body muted>{upload.error instanceof Error ? upload.error.message : 'No fue posible subir las fotos.'}</Body> : null}
+      {upload.isError ? <Body muted>{errorToUserMessage(upload.error, 'No fue posible subir las fotos.')}</Body> : null}
     </Screen>
   );
 }
@@ -254,7 +255,7 @@ export function SellDocumentsScreen() {
       ))}
       <Divider />
       <Button label={upload.isPending ? 'Guardando...' : 'Siguiente'} disabled={!declaration || upload.isPending} onPress={() => upload.mutate()} />
-      {upload.isError ? <Body muted>{upload.error instanceof Error ? upload.error.message : 'No fue posible cargar documentación.'}</Body> : null}
+      {upload.isError ? <Body muted>{errorToUserMessage(upload.error, 'No fue posible cargar documentación.')}</Body> : null}
     </Screen>
   );
 }
@@ -292,7 +293,7 @@ export function SellReviewScreen() {
       </Card>
       <StatusState icon="document-text-outline" title="Revisión final" message="Al confirmar, la solicitud pasa a revisión de la empresa y queda pendiente de inspección." tone="yellow" />
       <Button label={confirm.isPending ? 'Enviando...' : 'Confirmar'} disabled={confirm.isPending} onPress={() => confirm.mutate()} />
-      {confirm.isError ? <Body muted>{confirm.error instanceof Error ? confirm.error.message : 'No fue posible enviar la solicitud.'}</Body> : null}
+      {confirm.isError ? <Body muted>{errorToUserMessage(confirm.error, 'No fue posible enviar la solicitud.')}</Body> : null}
       <Button label="Editar bien" variant="secondary" onPress={back} />
       <Button label="Cancelar" variant="ghost" onPress={() => router.replace('/(tabs)')} />
     </Screen>

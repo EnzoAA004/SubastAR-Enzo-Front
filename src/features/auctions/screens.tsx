@@ -11,6 +11,7 @@ import { colors, fonts, radius, spacing, typography } from '@/constants/theme';
 import { useSafeBack } from '@/hooks/use-safe-back';
 import { useSession } from '@/providers/app-provider';
 import { auctionService, paymentService, profileService } from '@/services/api';
+import { errorToUserMessage } from '@/services/errors';
 import { ApiError } from '@/services/http';
 
 function useId() {
@@ -439,7 +440,7 @@ export function ConfirmBidScreen() {
         <StatusState
           icon="alert-circle-outline"
           title={insufficientCategory ? 'No podés pujar' : restricted ? 'No podés ofertar en este lote' : 'No pudimos registrar la oferta'}
-          message={insufficientCategory ? 'Todavía no contás con una categoría suficiente para participar en esta subasta.' : mutation.error instanceof Error ? mutation.error.message : 'La puja fue rechazada.'}
+          message={insufficientCategory ? 'Todavía no contás con una categoría suficiente para participar en esta subasta.' : errorToUserMessage(mutation.error, 'La puja fue rechazada.')}
           tone="red"
           actionLabel={restricted && !insufficientCategory ? 'Ver estado de cuenta' : undefined}
           onAction={() => router.push('/profile/account-status')}

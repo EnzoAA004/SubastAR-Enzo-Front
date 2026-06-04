@@ -17,6 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BrandWordmark } from '@/components/brand/logo';
 import { colors, deepShadow, fonts, radius, shadow, spacing, typography, MaxContentWidth } from '@/constants/theme';
+import { normalizeServerMessage } from '@/services/errors';
 
 const buttonIconColors = {
   primary: '#FFF',
@@ -353,7 +354,7 @@ export function ErrorState({ message, onRetry }: { message?: string; onRetry?: (
         <Ionicons name="cloud-offline-outline" size={25} color={colors.danger} />
       </View>
       <Text style={styles.sectionTitle}>No pudimos cargar la información</Text>
-      <Body muted>{message ?? 'Revise su conexión con el servidor e intentá nuevamente.'}</Body>
+      <Body muted>{normalizeServerMessage(message ?? 'No pudimos conectarnos con el servidor. Revisá tu conexión e intentá nuevamente.')}</Body>
       {onRetry ? <Button label="Reintentar" variant="secondary" onPress={onRetry} /> : null}
     </Card>
   );

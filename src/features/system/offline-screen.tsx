@@ -23,12 +23,12 @@ export default function OfflineScreen() {
       <Card style={styles.card}>
         <StatusPanel
           icon="cloud-offline-outline"
-          title="Sin conexion a internet"
-          message="No pudimos conectarnos con SubastAR. Revisa tu conexion o intenta nuevamente."
+          title="Sin conexión"
+          message="No pudimos conectarnos con el servidor de SubastAR. Revisá tu conexión e intentá nuevamente."
           tone="yellow"
         />
-        {retryFailed ? <StatusPanel icon="alert-circle-outline" title="Todavia no pudimos reconectar" message="Revisa tu conexion e intenta otra vez." tone="red" /> : null}
-        <Button label={isRetrying ? 'Comprobando...' : 'Reintentar conexion'} disabled={isRetrying} onPress={retry} />
+        {retryFailed ? <StatusPanel icon="alert-circle-outline" title="Todavía no pudimos reconectar" message="Revisá tu conexión e intentá otra vez." tone="red" /> : null}
+        <Button label={isRetrying ? 'Comprobando...' : 'Reintentar conexión'} disabled={isRetrying} onPress={retry} />
         <Button label="Volver al inicio" variant="ghost" onPress={() => {
           setOffline(false);
           router.replace('/');

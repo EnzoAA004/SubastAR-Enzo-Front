@@ -1,4 +1,5 @@
 import { getToken } from '@/services/session-storage';
+import { getServerCommunicationFallback, getServerConnectionMessage, normalizeServerMessage } from '@/services/errors';
 let unauthorizedHandler: undefined | (() => void | Promise<void>);
 let networkErrorHandler: undefined | (() => void | Promise<void>);
 
@@ -71,19 +72,19 @@ export class ApiError extends Error {
 }
 
 export class ApiNetworkError extends Error {
-  constructor(message = 'Sin conexión a internet o con el servidor.') {
+  constructor(message = getServerConnectionMessage()) {
     super(message);
     this.name = 'ApiNetworkError';
   }
 }
 
 async function extractErrorMessage(response: Response): Promise<string> {
-  const fallback = 'Error de servidor.';
+  const fallback = getServerCommunicationFallback();
   const contentType = response.headers.get('content-type') ?? '';
 
   if (!contentType.includes('application/json')) {
     const text = await response.text().catch(() => '');
-    return text.trim() || fallback;
+    return normalizeServerMessage(text.trim() || fallback);
   }
 
   const payload = await response.json().catch(() => undefined) as
@@ -93,7 +94,7 @@ async function extractErrorMessage(response: Response): Promise<string> {
 
   for (const key of ['message', 'error', 'detail']) {
     const value = payload[key];
-    if (typeof value === 'string' && value.trim()) return value;
+    if (typeof value === 'string' && value.trim()) return normalizeServerMessage(value);
   }
 
   for (const key of ['errors', 'errores']) {
@@ -104,14 +105,14 @@ async function extractErrorMessage(response: Response): Promise<string> {
         if (item && typeof item === 'object' && 'message' in item && typeof item.message === 'string') return item.message;
         return JSON.stringify(item);
       }).filter(Boolean);
-      if (messages.length) return messages.join('\n');
+      if (messages.length) return normalizeServerMessage(messages.join('\n'));
     }
   }
 
   const fieldMessages = Object.entries(payload)
     .filter(([, value]) => typeof value === 'string')
     .map(([field, value]) => `${field}: ${value}`);
-  if (fieldMessages.length) return fieldMessages.join('\n');
+  if (fieldMessages.length) return normalizeServerMessage(fieldMessages.join('\n'));
 
   return fallback;
 }

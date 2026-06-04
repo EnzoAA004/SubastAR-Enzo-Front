@@ -14,6 +14,7 @@ import { ExternalLink } from './external-link';
 import { ThemedText } from './themed-text';
 import { ThemedView } from './themed-view';
 
+import { BrandWordmark } from '@/components/brand/logo';
 import { Colors, MaxContentWidth, Spacing } from '@/constants/theme';
 
 export default function AppTabs() {
@@ -55,9 +56,9 @@ export function CustomTabList(props: TabListProps) {
   return (
     <View {...props} style={styles.tabListContainer}>
       <ThemedView type="backgroundElement" style={styles.innerContainer}>
-        <ThemedText type="smallBold" style={styles.brandText}>
-          SubastAR
-        </ThemedText>
+        <View style={styles.brandText}>
+          <BrandWordmark compact />
+        </View>
 
         {props.children}
 
