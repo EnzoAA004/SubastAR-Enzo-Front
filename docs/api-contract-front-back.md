@@ -12,12 +12,14 @@ Estados usados:
 
 | Flujo | Metodo | Endpoint Front | Body enviado | Respuesta esperada | Estado |
 |---|---|---|---|---|---|
-| Iniciar login 2FA | `POST` | `/auth/login` | `{ email, password }` | `{ requires_2fa, challenge_id, email, message }` | Confirmar backend |
-| Verificar login 2FA | `POST` | `/auth/login/verificar-2fa` | `{ challenge_id, codigo }` | `{ access_token, token_type, usuario }` | Confirmar backend |
-| Reenviar login 2FA | `POST` | `/auth/login/reenviar-2fa` | `{ challenge_id }` | nuevo `{ requires_2fa, challenge_id, email, message }` | Confirmar backend |
+| Login | `POST` | `/auth/login` | `{ email, password }` | `{ access_token, token_type, usuario }` | Confirmar backend |
 | Registro con DNI | `POST` | `/auth/registro` | multipart: datos, `foto_dni_frente`, `foto_dni_dorso` | `{ message }` | Confirmar backend |
+| Reenviar codigo registro | `POST` | `/auth/registro/reenviar-codigo` | `{ email }` | `{ message }` | Confirmar backend |
+| Cancelar registro pendiente | `POST` | `/auth/registro-pendiente/cancelar` | `{ email }` | `{ message }` | Confirmar backend |
 | Verificar codigo | `POST` | `/auth/verificar-codigo` | `{ email, codigo }` | `{ message, tokenVerificacion }` o variante `token_verificacion` | Pendiente backend |
 | Completar registro | `POST` | `/auth/completar-registro` | `{ token_verificacion, password, password_confirmacion }` | `{ access_token, usuario }` | Pendiente backend |
+| Solicitar recuperacion password | `POST` | `/auth/recuperar-password` | `{ email }` | `{ message }` | Confirmar backend |
+| Confirmar recuperacion password | `POST` | `/auth/recuperar-password/confirmar` | `{ email, codigo, password, password_confirmacion }` | `{ message }` | Confirmar backend |
 | Logout | `POST` | `/auth/logout` | sin body | sin contenido | Confirmar backend |
 
 ## Subastas Y Pujas
@@ -86,6 +88,7 @@ Estados usados:
 
 ## Integracion Tecnica
 
+- El frontend verifica recuperacion de conectividad con `GET /health/ping`, que debe responder `{ "message": "pong" }`.
 - La URL base se configura con `EXPO_PUBLIC_API_URL`; ver `.env.example`.
 - La carga unsigned de fotos a Cloudinary se configura en `src/services/cloudinary.ts` con `cloudinaryConfig.cloudName` y `cloudinaryConfig.unsignedUploadPreset`.
 - El frontend nunca debe recibir ni exponer `CLOUDINARY_API_SECRET`.

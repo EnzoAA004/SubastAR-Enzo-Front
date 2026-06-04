@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Badge, Body, Card } from '@/components/ui/primitives';
+import { LotImageCarousel } from '@/components/domain/LotImageCarousel';
 import { colors, fonts, radius, shadow, spacing, typography } from '@/constants/theme';
 import type { Auction, Lot, PaymentMethod, Purchase } from '@/types/domain';
 
@@ -52,7 +53,7 @@ export function LotCard({ lot, onPress }: { lot: Lot; onPress: () => void }) {
   return (
     <Pressable onPress={onPress} style={styles.lotCard}>
       <View style={styles.lotMedia}>
-        {lot.image ? <Image source={{ uri: lot.image }} style={styles.lotImage} /> : <View style={[styles.lotImage, styles.noImage]}><Ionicons name="image-outline" size={28} color={colors.primary} /></View>}
+        <LotImageCarousel images={lot.images?.length ? lot.images : lot.image ? [lot.image] : undefined} title={lot.title} height={180} />
         <View style={styles.lotBadgeWrap}><Badge label={`Lote ${lot.lotNumber}`} tone={lot.status?.toLowerCase() === 'vendido' || lot.status?.toLowerCase() === 'subastado' ? 'red' : 'purple'} /></View>
       </View>
       <View style={styles.lotCopy}>
@@ -131,8 +132,6 @@ const styles = StyleSheet.create({
   forward: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primarySoft },
   lotCard: { flex: 1, minWidth: '46%', overflow: 'hidden', borderRadius: radius.lg, borderColor: colors.border, borderWidth: 1, backgroundColor: colors.surface, ...shadow },
   lotMedia: { position: 'relative' },
-  lotImage: { width: '100%', height: 150, backgroundColor: colors.surfaceAlt },
-  noImage: { alignItems: 'center', justifyContent: 'center' },
   lotBadgeWrap: { position: 'absolute', top: spacing.sm, left: spacing.sm },
   lotCopy: { padding: spacing.md, gap: spacing.xs },
   lotTitle: { fontSize: typography.body, lineHeight: 20, color: colors.textStrong, fontFamily: fonts.bold },

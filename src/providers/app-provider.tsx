@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { usePathname, useRouter } from 'expo-router';
 import { createContext, type PropsWithChildren, useContext, useEffect, useMemo, useState } from 'react';
 
+import { ConnectivityProvider } from '@/providers/connectivity-provider';
 import type { RegistrationDraft, Session } from '@/types/domain';
 import { setUnauthorizedHandler } from '@/services/http';
 import { readSession, storeSession } from '@/services/session-storage';
@@ -71,7 +72,9 @@ export function AppProvider({ children }: PropsWithChildren) {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <SessionContext.Provider value={value}>{children}</SessionContext.Provider>
+      <ConnectivityProvider>
+        <SessionContext.Provider value={value}>{children}</SessionContext.Provider>
+      </ConnectivityProvider>
     </QueryClientProvider>
   );
 }

@@ -30,7 +30,7 @@ export const API_BASE_URL = apiConfig.baseUrl;
 
 type BackendUser = { nombre: string; apellido: string; email: string; categoria: string; estado: string };
 type BackendLoginTwoFactorStart = { requires_2fa: boolean; challenge_id: string; email: string; message: string };
-type BackendLogin = { access_token: string; token_type: string; usuario: BackendUser };
+type BackendLogin = { access_token?: string; token_type?: string; usuario?: BackendUser };
 type VerifyCodeResponse = { message: string; token_verificacion?: string; tokenVerificacion?: string };
 type BackendAuction = {
   id: number; nombre: string; direccion: string; fecha_inicio: string; categoria: string; moneda: string;
@@ -95,9 +95,10 @@ type BackendAssetSubmission = {
   minimo_fotos_requeridas: number; puede_confirmar: boolean;
 };
 
-function absoluteAsset(uri?: string) {
-  if (!uri) return undefined;
-  return uri.startsWith('http') ? uri : `${API_BASE_URL}${uri.replace('/api/v1', '')}`;
+function absoluteAsset(value?: string | null) {
+  if (!value) return undefined;
+  if (value.startsWith('http://') || value.startsWith('https://')) return value;
+  return `${apiConfig.baseUrl}${value.startsWith('/') ? value : `/${value}`}`;
 }
 
 function mapStatus(status: string): Auction['status'] {
@@ -123,6 +124,7 @@ function mapAuction(auction: BackendAuction): Auction {
 }
 
 function mapLot(lot: BackendLot, auctionId: string): Lot {
+  const images = (lot.imagenes ?? []).map(absoluteAsset).filter((image): image is string => !!image);
   return {
     id: String(lot.id),
     auctionId,
@@ -136,7 +138,8 @@ function mapLot(lot: BackendLot, auctionId: string): Lot {
     creationDate: lot.fecha_creacion,
     owner: lot.dueno_actual,
     status: lot.estado,
-    image: absoluteAsset(lot.imagenes?.[0]),
+    image: images[0],
+    images,
   };
 }
 
@@ -220,6 +223,16 @@ function appendFile(form: FormData, name: string, file: FileUpload) {
   } as unknown as Blob);
 }
 
+async function requestWithTimeout<T>(route: string, options: RequestInit, timeoutMs = 30_000) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await request<T>(route, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 function titleForNotificationType(type: string) {
   switch (type) {
     case 'compra': return 'Compra';
@@ -232,13 +245,9 @@ function titleForNotificationType(type: string) {
 }
 
 export const authService = {
-  async login(email: string, password: string) {
-    const response = await request<BackendLoginTwoFactorStart>(apiRoutes.login, { method: 'POST', body: JSON.stringify({ email, password }) });
-    return {
-      challengeId: response.challenge_id,
-      email: response.email,
-      message: response.message,
-    };
+  async login(email: string, password: string): Promise<Session> {
+    const login = await request<BackendLogin>(apiRoutes.login, { method: 'POST', body: JSON.stringify({ email, password }) });
+    return this.loginFromResponse(login);
   },
   async verifyLogin2fa(challengeId: string, code: string): Promise<Session> {
     const login = await request<BackendLogin>(apiRoutes.loginVerify2fa, {
@@ -267,7 +276,13 @@ export const authService = {
     form.append('pais_origen', input.country);
     appendFile(form, 'foto_dni_frente', input.front);
     appendFile(form, 'foto_dni_dorso', input.back);
-    return request<{ message: string }>(apiRoutes.register, { method: 'POST', body: form });
+    return requestWithTimeout<{ message: string }>(apiRoutes.register, { method: 'POST', body: form });
+  },
+  async resendRegistrationCode(email: string) {
+    return request<{ message: string }>(apiRoutes.registerResendCode, { method: 'POST', body: JSON.stringify({ email }) });
+  },
+  async cancelPendingRegistration(email: string) {
+    return request<{ message: string }>(apiRoutes.cancelPendingRegistration, { method: 'POST', body: JSON.stringify({ email }) });
   },
   async verify(email: string, code: string) {
     const response = await request<VerifyCodeResponse>(apiRoutes.verifyCode, {
@@ -285,7 +300,17 @@ export const authService = {
     });
     return this.loginFromResponse(login);
   },
+  async requestPasswordReset(email: string) {
+    return request<{ message: string }>(apiRoutes.requestPasswordReset, { method: 'POST', body: JSON.stringify({ email }) });
+  },
+  async confirmPasswordReset(email: string, code: string, password: string, passwordConfirmation: string) {
+    return request<{ message: string }>(apiRoutes.confirmPasswordReset, {
+      method: 'POST',
+      body: JSON.stringify({ email, codigo: code, password, password_confirmacion: passwordConfirmation }),
+    });
+  },
   loginFromResponse(login: BackendLogin): Session {
+    if (!login.access_token || !login.usuario) throw new Error('Email o contraseÃ±a incorrectos.');
     return {
       token: login.access_token,
       profile: {

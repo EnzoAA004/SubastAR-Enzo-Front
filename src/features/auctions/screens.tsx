@@ -2,9 +2,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AuctionCard, formatCurrency, LotCard, PaymentMethodCard } from '@/components/domain/cards';
+import { LotImageCarousel } from '@/components/domain/LotImageCarousel';
 import { AuthRequiredModal, Badge, Body, Button, Card, Chip, Divider, EmptyState, ErrorState, Header, IconButton, InfoTile, Input, LoadingState, Screen, SearchInput, SectionHeader, SectionLabel, SecurityNote, StatusState, Title } from '@/components/ui/primitives';
 import { colors, fonts, radius, spacing, typography } from '@/constants/theme';
 import { useSafeBack } from '@/hooks/use-safe-back';
@@ -15,17 +16,6 @@ import { ApiError } from '@/services/http';
 function useId() {
   const { id } = useLocalSearchParams<{ id: string }>();
   return id ?? '';
-}
-
-function HeroMedia({ uri, size = 'default' }: { uri?: string; size?: 'default' | 'compact' }) {
-  const height = size === 'compact' ? 190 : 258;
-  const radiusSize = size === 'compact' ? radius.md : radius.lg;
-  if (uri) return <Image source={{ uri }} style={[styles.heroMedia, { height, borderRadius: radiusSize }]} />;
-  return (
-    <View style={[styles.heroMedia, styles.imagePlaceholder, { height, borderRadius: radiusSize }]}>
-      <Ionicons name="image-outline" size={size === 'compact' ? 38 : 42} color={colors.primary} />
-    </View>
-  );
 }
 
 function InfoRow({ icon, label, value }: { icon: keyof typeof Ionicons.glyphMap; label: string; value: string }) {
@@ -243,7 +233,7 @@ export function LotDetailScreen() {
   return (
     <Screen>
       <Header title={`Lote ${lot.lotNumber}`} onBack={back} />
-      <HeroMedia uri={lot.image} />
+      <LotImageCarousel images={lot.images?.length ? lot.images : lot.image ? [lot.image] : undefined} title={lot.title} height={340} />
       <Card style={styles.detailHero}>
         <Badge label={`Lote ${lot.lotNumber}`} tone="purple" />
         <Title>{lot.title}</Title>
@@ -324,7 +314,7 @@ export function LiveAuctionScreen() {
         <Text style={styles.liveTitle}>{data.lot.title}</Text>
         <Body muted>{auction?.location ?? 'Subasta activa'}</Body>
       </Card>
-      <HeroMedia uri={data.lot.image} size="compact" />
+      <LotImageCarousel images={data.lot.images?.length ? data.lot.images : data.lot.image ? [data.lot.image] : undefined} title={data.lot.title} height={300} />
       <Card style={styles.bidPanel}>
         <SectionHeader title="Consola de puja" subtitle="Elegí un monto rápido o ingresalo manualmente" />
         <Body muted>Mejor oferta actual</Body>
@@ -345,7 +335,7 @@ export function LiveAuctionScreen() {
         <Input label="Tu oferta" value={amount} keyboardType="number-pad" onChangeText={setAmount} />
         {hasInvalidAmount ? <Body muted>Ingresá un monto numérico válido.</Body> : null}
         {isBelowMinimum ? <Body muted>La puja mínima es {formatAuctionMoney(data.minBid, currency)}.</Body> : null}
-        {isAboveMaximum ? <Body muted>El monto supera el máximo general. Si tu categoría lo permite, el backend validará la operación.</Body> : null}
+        {isAboveMaximum ? <Body muted>El monto supera el máximo general. Si tu categoría lo permite, el sistema validará la operación.</Body> : null}
         {usablePayments.length ? usablePayments.map((payment) => (
           <Pressable key={payment.id} onPress={() => setPaymentId(payment.id)}>
             <PaymentMethodCard payment={payment} selected={paymentId === payment.id} />
@@ -551,8 +541,6 @@ const styles = StyleSheet.create({
   infoValue: { color: colors.text, fontSize: typography.body, fontFamily: fonts.medium },
   bigNumber: { color: colors.primary, fontSize: 28, fontFamily: fonts.black },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
-  heroMedia: { width: '100%', backgroundColor: colors.surfaceAlt, borderRadius: radius.lg },
-  imagePlaceholder: { alignItems: 'center', justifyContent: 'center' },
   priceCard: { backgroundColor: colors.primarySoft },
   metricCard: { backgroundColor: colors.surfaceAlt },
   price: { fontSize: typography.body, color: colors.text, fontFamily: fonts.black },

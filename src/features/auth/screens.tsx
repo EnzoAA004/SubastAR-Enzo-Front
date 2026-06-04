@@ -1,10 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { type Href, useLocalSearchParams, useRouter } from 'expo-router';
 import { Controller, useForm } from 'react-hook-form';
 import { useEffect, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Alert, Platform, StyleSheet, Text, View } from 'react-native';
+import Animated, { Easing, FadeIn, FadeOut, Keyframe, SlideInUp, ZoomIn } from 'react-native-reanimated';
 import { z } from 'zod';
 
 import { BrandLogo } from '@/components/brand/logo';
@@ -13,8 +15,12 @@ import { colors, fonts, radius, spacing, typography } from '@/constants/theme';
 import { useSafeBack } from '@/hooks/use-safe-back';
 import { useSession } from '@/providers/app-provider';
 import { authService } from '@/services/api';
-import { ApiError } from '@/services/http';
+import { ApiError, ApiNetworkError } from '@/services/http';
+import { explainFileAccess, permissionDeniedMessage, requestMediaLibraryPermission } from '@/services/permissions';
 import type { FileUpload } from '@/types/domain';
+
+const MOCK_SPLASH_LOGO_SOURCE: ReturnType<typeof require> | null = null;
+const resendCooldownSeconds = 30;
 
 function ErrorNotice({ message }: { message: string }) {
   return (
@@ -51,6 +57,15 @@ const passwordSchema = z.object({
 
 const registrationSteps = ['Datos', 'Código', 'Clave', 'Pago'];
 
+const forgotPasswordSchema = z.object({ email: z.email('Ingresa un correo valido.') });
+const resetPasswordSchema = z.object({
+  code: z.string().min(4, 'Ingresa el codigo recibido.'),
+  password: z.string()
+    .min(8, 'La contrasena debe tener minimo 8 caracteres.')
+    .regex(passwordRegex, 'La contrasena no cumple los requisitos de seguridad.'),
+  confirmation: z.string().min(8, 'Confirma tu contrasena.'),
+}).refine((values) => values.password === values.confirmation, { path: ['confirmation'], message: 'Las contrasenas no coinciden.' });
+
 function getPasswordChecks(password: string) {
   return [
     { label: 'Mínimo 8 caracteres', valid: password.length >= 8 },
@@ -61,21 +76,66 @@ function getPasswordChecks(password: string) {
   ];
 }
 
+function messageForAuthError(error: unknown, fallback: string) {
+  if (error instanceof ApiNetworkError) return 'Sin conexion con SubastAR. Revisa tu internet e intenta nuevamente.';
+  return error instanceof Error ? error.message : fallback;
+}
+
+function messageForLoginError(error: unknown) {
+  if (error instanceof ApiNetworkError) return 'Sin conexion con SubastAR. Revisa tu internet e intenta nuevamente.';
+  if (error instanceof ApiError && [400, 401, 404].includes(error.status)) return 'Email o contrasena incorrectos.';
+  return 'Email o contrasena incorrectos.';
+}
+
+function confirmCancelRegistration(onConfirm: () => void) {
+  const message = 'Esto eliminara tu registro pendiente y vas a poder registrarte nuevamente. Queres continuar?';
+  if (Platform.OS === 'web') {
+    if (globalThis.confirm(message)) onConfirm();
+    return;
+  }
+  Alert.alert('Cancelar registro', message, [
+    { text: 'No', style: 'cancel' },
+    { text: 'Si, cancelar', style: 'destructive', onPress: onConfirm },
+  ]);
+}
+
+const splashPulseKeyframe = new Keyframe({
+  0: { transform: [{ scale: 0.88 }], opacity: 0.68 },
+  45: { transform: [{ scale: 1.08 }], opacity: 1, easing: Easing.out(Easing.cubic) },
+  100: { transform: [{ scale: 0.95 }], opacity: 0.72, easing: Easing.inOut(Easing.quad) },
+});
+
 export function SplashScreen() {
   const router = useRouter();
   const { loading, session } = useSession();
   useEffect(() => {
     if (!loading) {
-      const timer = setTimeout(() => router.replace(session ? '/(tabs)' : '/welcome'), 800);
+      const timer = setTimeout(() => router.replace(session ? '/(tabs)' : '/welcome'), 1500);
       return () => clearTimeout(timer);
     }
   }, [loading, router, session]);
   return (
     <Screen scroll={false} style={styles.splash}>
-      <Card style={styles.splashCard}>
-        <BrandLogo iconSize={112} />
-        <Body muted>Subastas online con una experiencia premium, clara y confiable.</Body>
-      </Card>
+      <Animated.View entering={FadeIn.duration(350)} exiting={FadeOut.duration(250)} style={styles.splashBackdrop}>
+        <Animated.View entering={splashPulseKeyframe.duration(1800)} style={[styles.splashOrb, styles.splashOrbOne]} />
+        <Animated.View entering={splashPulseKeyframe.duration(2200)} style={[styles.splashOrb, styles.splashOrbTwo]} />
+        <Animated.View entering={ZoomIn.duration(620).easing(Easing.out(Easing.back(1.2)))} style={styles.splashLogoShell}>
+          {MOCK_SPLASH_LOGO_SOURCE ? (
+            <Image source={MOCK_SPLASH_LOGO_SOURCE} style={styles.splashLogoImage} contentFit="contain" />
+          ) : (
+            <BrandLogo iconSize={116} />
+          )}
+        </Animated.View>
+        <Animated.View entering={SlideInUp.delay(180).duration(520)} style={styles.splashCopy}>
+          <Title>SubastAR</Title>
+          <Body muted>Subastas online con una experiencia premium, clara y confiable.</Body>
+        </Animated.View>
+        <View style={styles.splashDots}>
+          {[0, 1, 2].map((dot) => (
+            <Animated.View key={dot} entering={ZoomIn.delay(320 + dot * 140).duration(420)} style={styles.splashDot} />
+          ))}
+        </View>
+      </Animated.View>
     </Screen>
   );
 }
@@ -109,7 +169,7 @@ export function LoginScreen() {
   const router = useRouter();
   const back = useSafeBack();
   const { returnTo } = useLocalSearchParams<{ returnTo?: string }>();
-  const { enterAsGuest } = useSession();
+  const { enterAsGuest, signIn } = useSession();
   const [apiError, setApiError] = useState('');
   const { control, handleSubmit, formState: { errors, isSubmitting } } = useForm<z.infer<typeof loginSchema>>({
     resolver: zodResolver(loginSchema),
@@ -118,18 +178,11 @@ export function LoginScreen() {
   const submit = handleSubmit(async (values) => {
     try {
       setApiError('');
-      const response = await authService.login(values.email, values.password);
-      router.push({
-        pathname: '/login-2fa',
-        params: {
-          challengeId: response.challengeId,
-          email: response.email,
-          message: response.message,
-          returnTo: returnTo || '/(tabs)',
-        },
-      });
+      const session = await authService.login(values.email, values.password);
+      await signIn(session);
+      router.replace((returnTo || '/(tabs)') as Href);
     } catch (error) {
-      setApiError(error instanceof Error ? error.message : 'No fue posible ingresar.');
+      setApiError(messageForLoginError(error));
     }
   });
   return (
@@ -147,6 +200,7 @@ export function LoginScreen() {
         {apiError ? <ErrorNotice message={apiError} /> : null}
         <Button label={isSubmitting ? 'Ingresando...' : 'Iniciar sesión'} disabled={isSubmitting} onPress={submit} />
         <Button label="¿No tienes una cuenta? Regístrate" variant="ghost" onPress={() => router.push({ pathname: '/register', params: { returnTo } })} />
+        <Button label="Olvidaste tu contrasena?" variant="ghost" onPress={() => router.push('/forgot-password' as Href)} />
         <View style={styles.centerSeparator}><Body muted>O</Body></View>
         <Button label="Continúa como un invitado" variant="ghost" onPress={() => { enterAsGuest(); router.replace('/(tabs)'); }} />
       </Card>
@@ -236,17 +290,28 @@ export function RegisterScreen() {
     defaultValues: { name: '', surname: '', email: '', address: '', country: 'Argentina' },
   });
   async function pick(side: 'front' | 'back') {
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.7 });
-    if (!result.canceled) {
-      const asset = result.assets[0];
-      const upload: FileUpload = {
-        uri: asset.uri,
-        name: asset.fileName ?? `dni-${side}-${Date.now()}.jpg`,
-        type: asset.mimeType ?? 'image/jpeg',
-        file: asset.file,
-      };
-      if (side === 'front') setFront(upload);
-      else setBackImage(upload);
+    try {
+      setApiError('');
+      explainFileAccess('photo');
+      const granted = await requestMediaLibraryPermission();
+      if (!granted) {
+        setApiError(permissionDeniedMessage('gallery'));
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.7 });
+      if (!result.canceled) {
+        const asset = result.assets[0];
+        const upload: FileUpload = {
+          uri: asset.uri,
+          name: asset.fileName ?? `dni-${side}-${Date.now()}.jpg`,
+          type: asset.mimeType ?? 'image/jpeg',
+          file: asset.file,
+        };
+        if (side === 'front') setFront(upload);
+        else setBackImage(upload);
+      }
+    } catch {
+      setApiError(permissionDeniedMessage('gallery'));
     }
   }
   const submit = handleSubmit(async (values) => {
@@ -260,7 +325,7 @@ export function RegisterScreen() {
       setRegistration({ email: values.email, returnTo });
       router.push('/registration-pending' as Href);
     } catch (error) {
-      setApiError(error instanceof Error ? error.message : 'No fue posible enviar tu registro.');
+      setApiError(messageForAuthError(error, 'No pudimos completar el registro. Revisa tu conexion e intenta nuevamente.'));
     }
   });
   return (
@@ -276,6 +341,7 @@ export function RegisterScreen() {
         <Controller control={control} name="address" render={({ field }) => <Input label="Domicilio legal" value={field.value} onChangeText={field.onChange} error={errors.address?.message} />} />
         <Controller control={control} name="country" render={({ field }) => <Input label="País de origen" value={field.value} onChangeText={field.onChange} error={errors.country?.message} />} />
         <SectionLabel>Documento de identidad</SectionLabel>
+        <Body muted>Necesitamos abrir tu galeria para adjuntar frente y dorso del DNI. En computadora se abrira el selector de archivos.</Body>
         <View style={styles.uploadRow}>
           <UploadAction label="Frente" done={!!front} onPress={() => pick('front')} />
           <UploadAction label="Dorso" done={!!backImage} onPress={() => pick('back')} />
@@ -294,13 +360,35 @@ function UploadAction({ label, done, onPress }: { label: string; done: boolean; 
 
 export function RegistrationPendingScreen() {
   const router = useRouter();
-  const { registration } = useSession();
+  const { registration, setRegistration } = useSession();
+  const [apiError, setApiError] = useState('');
+  const [isCancelling, setCancelling] = useState(false);
+  async function cancelRegistration() {
+    if (!registration?.email) {
+      setRegistration(null);
+      router.replace('/register');
+      return;
+    }
+    try {
+      setApiError('');
+      setCancelling(true);
+      await authService.cancelPendingRegistration(registration.email);
+      setRegistration(null);
+      router.replace('/register');
+    } catch (error) {
+      setApiError(messageForAuthError(error, 'No fue posible cancelar el registro pendiente.'));
+    } finally {
+      setCancelling(false);
+    }
+  }
   return (
     <Screen style={styles.pending}>
       <Card style={styles.formCard}>
         <StatusPanel icon="mail-unread-outline" title="Solicitud enviada" message="Recibimos tus datos y las imágenes del DNI. Cuando tu cuenta sea aprobada, recibirás el código por correo." tone="green" />
         {registration?.email ? <Text style={styles.pendingEmail}>{registration.email}</Text> : null}
+        {apiError ? <ErrorNotice message={apiError} /> : null}
         <Button label="Ya recibí mi código" onPress={() => router.push('/verify')} />
+        <Button label={isCancelling ? 'Cancelando...' : 'Cancelar registro y empezar de nuevo'} variant="secondary" disabled={isCancelling} onPress={() => confirmCancelRegistration(cancelRegistration)} />
         <Button label="Volver al acceso" variant="ghost" onPress={() => router.replace('/welcome')} />
       </Card>
     </Screen>
@@ -312,9 +400,17 @@ export function VerifyScreen() {
   const back = useSafeBack();
   const { registration, setRegistration } = useSession();
   const [apiError, setApiError] = useState('');
+  const [infoMessage, setInfoMessage] = useState('');
+  const [isResending, setResending] = useState(false);
+  const [cooldown, setCooldown] = useState(0);
   const { control, handleSubmit, formState: { errors, isSubmitting } } = useForm<z.infer<typeof verifySchema>>({
     resolver: zodResolver(verifySchema), defaultValues: { code: '' },
   });
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const timer = setTimeout(() => setCooldown((current) => Math.max(0, current - 1)), 1000);
+    return () => clearTimeout(timer);
+  }, [cooldown]);
   const submit = handleSubmit(async ({ code }) => {
     if (!registration?.email) {
       setApiError('Volvé a registro para indicar el correo.');
@@ -338,8 +434,46 @@ export function VerifyScreen() {
         <Controller control={control} name="code" render={({ field }) => <Input label="Código de verificación" placeholder="0000" keyboardType="number-pad" value={field.value} onChangeText={field.onChange} error={errors.code?.message} />} />
         {apiError ? <ErrorNotice message={apiError} /> : null}
         <Body muted>¿No recibiste el código?</Body>
-        <Button label="Reenviar" variant="ghost" onPress={() => setApiError('La opción de reenvío todavía no está disponible.')} />
-        <Button label={isSubmitting ? 'Verificando...' : 'Verificar'} disabled={isSubmitting} onPress={submit} />
+        {infoMessage ? <Card style={styles.infoCard}><Body>{infoMessage}</Body></Card> : null}
+        <Button
+          label={isResending ? 'Reenviando...' : cooldown > 0 ? `Reenviar codigo (${cooldown}s)` : 'Reenviar codigo'}
+          variant="secondary"
+          disabled={isResending || cooldown > 0}
+          onPress={async () => {
+            if (!registration?.email) {
+              setApiError('Volve a registro para indicar el correo.');
+              return;
+            }
+            try {
+              setApiError('');
+              setInfoMessage('');
+              setResending(true);
+              await authService.resendRegistrationCode(registration.email);
+              setInfoMessage('Te enviamos un nuevo codigo. El codigo anterior ya no es valido.');
+              setCooldown(resendCooldownSeconds);
+            } catch (error) {
+              setApiError(messageForAuthError(error, 'No fue posible reenviar el codigo.'));
+            } finally {
+              setResending(false);
+            }
+          }}
+        />
+        <Button label={isSubmitting ? 'Verificando...' : 'Verificar'} disabled={isSubmitting || isResending} onPress={submit} />
+        <Button label="Cancelar registro y empezar de nuevo" variant="ghost" onPress={() => confirmCancelRegistration(async () => {
+          if (!registration?.email) {
+            setRegistration(null);
+            router.replace('/register');
+            return;
+          }
+          try {
+            setApiError('');
+            await authService.cancelPendingRegistration(registration.email);
+            setRegistration(null);
+            router.replace('/register');
+          } catch (error) {
+            setApiError(messageForAuthError(error, 'No fue posible cancelar el registro pendiente.'));
+          }
+        })} />
       </Card>
     </Screen>
   );
@@ -430,6 +564,121 @@ export function PasswordScreen() {
   );
 }
 
+export function ForgotPasswordScreen() {
+  const router = useRouter();
+  const back = useSafeBack();
+  const [apiError, setApiError] = useState('');
+  const { control, handleSubmit, formState: { errors, isSubmitting } } = useForm<z.infer<typeof forgotPasswordSchema>>({
+    resolver: zodResolver(forgotPasswordSchema),
+    defaultValues: { email: '' },
+  });
+  const submit = handleSubmit(async ({ email }) => {
+    try {
+      setApiError('');
+      await authService.requestPasswordReset(email);
+      router.push(`/reset-password?email=${encodeURIComponent(email)}` as Href);
+    } catch (error) {
+      setApiError(messageForAuthError(error, 'No fue posible enviar el codigo de recuperacion.'));
+    }
+  });
+  return (
+    <Screen>
+      <Header title="Recuperar contrasena" onBack={back} />
+      <Card style={styles.formCard}>
+        <StatusPanel icon="mail-outline" title="Codigo de recuperacion" message="Ingresa tu correo y te enviaremos un codigo para crear una nueva contrasena." />
+        <Controller control={control} name="email" render={({ field }) => (
+          <Input label="Correo electronico" keyboardType="email-address" autoCapitalize="none" value={field.value} onChangeText={field.onChange} error={errors.email?.message} />
+        )} />
+        {apiError ? <ErrorNotice message={apiError} /> : null}
+        <Button label={isSubmitting ? 'Enviando...' : 'Enviar codigo'} disabled={isSubmitting} onPress={submit} />
+        <Button label="Volver al login" variant="ghost" onPress={() => router.replace('/login')} />
+      </Card>
+    </Screen>
+  );
+}
+
+export function ResetPasswordScreen() {
+  const router = useRouter();
+  const back = useSafeBack();
+  const { email } = useLocalSearchParams<{ email?: string }>();
+  const [apiError, setApiError] = useState('');
+  const [infoMessage, setInfoMessage] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmation, setShowConfirmation] = useState(false);
+  const { control, handleSubmit, watch, formState: { errors, isSubmitting } } = useForm<z.infer<typeof resetPasswordSchema>>({
+    resolver: zodResolver(resetPasswordSchema),
+    defaultValues: { code: '', password: '', confirmation: '' },
+  });
+  const currentPassword = watch('password');
+  const currentConfirmation = watch('confirmation');
+  const passwordChecks = getPasswordChecks(currentPassword);
+  const isPasswordValid = passwordRegex.test(currentPassword);
+  const passwordsMatch = currentPassword === currentConfirmation;
+  const submit = handleSubmit(async ({ code, password, confirmation }) => {
+    if (!email) {
+      setApiError('Primero indica el correo de la cuenta.');
+      return;
+    }
+    try {
+      setApiError('');
+      await authService.confirmPasswordReset(email, code, password, confirmation);
+      setInfoMessage('Contrasena actualizada. Ya podes iniciar sesion.');
+      setTimeout(() => router.replace('/login'), 900);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '';
+      if (error instanceof ApiError && error.status === 400 || message.toLowerCase().includes('password') || message.toLowerCase().includes('contras')) {
+        setApiError('La contrasena no cumple los requisitos de seguridad.');
+        return;
+      }
+      setApiError(messageForAuthError(error, 'No fue posible actualizar la contrasena.'));
+    }
+  });
+  return (
+    <Screen>
+      <Header title="Nueva contrasena" onBack={back} />
+      <Card style={styles.formCard}>
+        <StatusPanel icon="shield-checkmark-outline" title="Completa la recuperacion" message={email ? `Codigo enviado a ${email}` : 'Ingresa el codigo recibido y tu nueva contrasena.'} />
+        <Controller control={control} name="code" render={({ field }) => (
+          <Input label="Codigo" placeholder="0000" keyboardType="number-pad" value={field.value} onChangeText={field.onChange} error={errors.code?.message} />
+        )} />
+        <Controller control={control} name="password" render={({ field }) => (
+          <Input
+            label="Nueva contrasena"
+            secureTextEntry={!showPassword}
+            value={field.value}
+            onChangeText={field.onChange}
+            error={errors.password?.message}
+            right={<IconButton icon={showPassword ? 'eye-off-outline' : 'eye-outline'} accessibilityLabel={showPassword ? 'Ocultar contrasena' : 'Mostrar contrasena'} onPress={() => setShowPassword((visible) => !visible)} />}
+          />
+        )} />
+        <Controller control={control} name="confirmation" render={({ field }) => (
+          <Input
+            label="Confirmar contrasena"
+            secureTextEntry={!showConfirmation}
+            value={field.value}
+            onChangeText={field.onChange}
+            error={errors.confirmation?.message}
+            right={<IconButton icon={showConfirmation ? 'eye-off-outline' : 'eye-outline'} accessibilityLabel={showConfirmation ? 'Ocultar confirmacion' : 'Mostrar confirmacion'} onPress={() => setShowConfirmation((visible) => !visible)} />}
+          />
+        )} />
+        <View style={styles.passwordRulesCard}>
+          {currentPassword && !isPasswordValid ? <Text style={styles.passwordRulesError}>La contrasena no cumple los requisitos de seguridad.</Text> : null}
+          <Text style={styles.passwordRulesTitle}>Tu contrasena debe cumplir:</Text>
+          {passwordChecks.map((rule) => (
+            <View key={rule.label} style={styles.passwordRuleRow}>
+              <Ionicons name={rule.valid ? 'checkmark-circle-outline' : 'close-circle-outline'} size={17} color={rule.valid ? colors.success : colors.textMuted} />
+              <Text style={[styles.passwordRuleText, rule.valid ? styles.passwordRuleValid : styles.passwordRuleInvalid]}>{rule.label}</Text>
+            </View>
+          ))}
+        </View>
+        {infoMessage ? <Card style={styles.infoCard}><Body>{infoMessage}</Body></Card> : null}
+        {apiError ? <ErrorNotice message={apiError} /> : null}
+        <Button label={isSubmitting ? 'Actualizando...' : 'Actualizar contrasena'} disabled={!isPasswordValid || !passwordsMatch || isSubmitting} onPress={submit} />
+      </Card>
+    </Screen>
+  );
+}
+
 export function OnboardingPaymentScreen() {
   const router = useRouter();
   const back = useSafeBack();
@@ -456,7 +705,15 @@ export function OnboardingPaymentScreen() {
 
 const styles = StyleSheet.create({
   splash: { alignItems: 'center', justifyContent: 'center', gap: spacing.md },
-  splashCard: { alignItems: 'center', gap: spacing.sm, width: '100%', maxWidth: 360 },
+  splashBackdrop: { alignItems: 'center', justifyContent: 'center', gap: spacing.lg, width: '100%', minHeight: '100%', overflow: 'hidden' },
+  splashOrb: { position: 'absolute', borderRadius: radius.pill, backgroundColor: colors.primarySoft },
+  splashOrbOne: { width: 260, height: 260, top: 80, right: -90 },
+  splashOrbTwo: { width: 210, height: 210, bottom: 80, left: -70, backgroundColor: colors.successSoft },
+  splashLogoShell: { width: 190, height: 190, borderRadius: 42, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.primaryBorder },
+  splashLogoImage: { width: 142, height: 142 },
+  splashCopy: { alignItems: 'center', gap: spacing.xs, maxWidth: 330 },
+  splashDots: { flexDirection: 'row', gap: spacing.sm },
+  splashDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.primary },
   welcome: { justifyContent: 'space-between' },
   welcomeHero: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.lg, backgroundColor: colors.surfaceAlt },
   actionsCard: { gap: spacing.md },

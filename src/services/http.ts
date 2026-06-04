@@ -1,8 +1,13 @@
 import { getToken } from '@/services/session-storage';
 let unauthorizedHandler: undefined | (() => void | Promise<void>);
+let networkErrorHandler: undefined | (() => void | Promise<void>);
 
 export function setUnauthorizedHandler(handler?: () => void | Promise<void>) {
   unauthorizedHandler = handler;
+}
+
+export function setNetworkErrorHandler(handler?: () => void | Promise<void>) {
+  networkErrorHandler = handler;
 }
 
 export const apiConfig = {
@@ -13,9 +18,14 @@ export const apiRoutes = {
   login: '/auth/login',
   loginVerify2fa: '/auth/login/verificar-2fa',
   loginResend2fa: '/auth/login/reenviar-2fa',
+  healthPing: '/health/ping',
   register: '/auth/registro',
+  registerResendCode: '/auth/registro/reenviar-codigo',
+  cancelPendingRegistration: '/auth/registro-pendiente/cancelar',
   verifyCode: '/auth/verificar-codigo',
   finishRegistration: '/auth/completar-registro',
+  requestPasswordReset: '/auth/recuperar-password',
+  confirmPasswordReset: '/auth/recuperar-password/confirmar',
   logout: '/auth/logout',
   countries: '/paises',
   auctions: '/subastas',
@@ -57,6 +67,13 @@ export class ApiError extends Error {
   constructor(message: string, readonly status: number) {
     super(message);
     this.name = 'ApiError';
+  }
+}
+
+export class ApiNetworkError extends Error {
+  constructor(message = 'Sin conexión a internet o con el servidor.') {
+    super(message);
+    this.name = 'ApiNetworkError';
   }
 }
 
@@ -104,7 +121,13 @@ export async function request<T>(route: string, options?: RequestInit): Promise<
   const headers = new Headers(options?.headers);
   if (token) headers.set('Authorization', `Bearer ${token}`);
   if (options?.body && !(options.body instanceof FormData)) headers.set('Content-Type', 'application/json');
-  const response = await fetch(`${apiConfig.baseUrl}${route}`, { ...options, headers });
+  let response: Response;
+  try {
+    response = await fetch(`${apiConfig.baseUrl}${route}`, { ...options, headers });
+  } catch {
+    await networkErrorHandler?.();
+    throw new ApiNetworkError();
+  }
   if (!response.ok) {
     const message = await extractErrorMessage(response);
     if (response.status === 401 && unauthorizedHandler) await unauthorizedHandler();
@@ -118,7 +141,13 @@ export async function requestText(route: string, options?: RequestInit): Promise
   const token = await getToken();
   const headers = new Headers(options?.headers);
   if (token) headers.set('Authorization', `Bearer ${token}`);
-  const response = await fetch(`${apiConfig.baseUrl}${route}`, { ...options, headers });
+  let response: Response;
+  try {
+    response = await fetch(`${apiConfig.baseUrl}${route}`, { ...options, headers });
+  } catch {
+    await networkErrorHandler?.();
+    throw new ApiNetworkError();
+  }
   if (!response.ok) {
     const message = await extractErrorMessage(response);
     if (response.status === 401 && unauthorizedHandler) await unauthorizedHandler();

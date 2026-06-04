@@ -16,13 +16,15 @@
 
 - [ ] Welcome carga correctamente.
 - [ ] Login informa los errores devueltos por la API.
-- [ ] Login correcto navega a `/login-2fa` sin guardar sesion antes de verificar el codigo.
-- [ ] Login 2FA guarda sesion solo con codigo correcto y respeta `returnTo`.
-- [ ] Reenviar codigo 2FA reemplaza el challenge anterior y muestra el mensaje informativo.
-- [ ] Volver desde login 2FA no deja una sesion iniciada.
+- [ ] Login correcto con token navega al home y guarda sesion.
+- [ ] Login con email inexistente queda en `/login`, muestra error y no guarda sesion.
 - [ ] Continuar como invitado permite explorar subastas.
 - [ ] Registro permite cargar DNI frente y dorso.
+- [ ] Registro exitoso navega a `/registration-pending` y no queda indefinidamente en enviando.
+- [ ] Reenviar codigo de registro reemplaza el anterior, muestra mensaje y aplica cooldown.
+- [ ] Cancelar registro pendiente permite empezar de nuevo con el mismo email.
 - [ ] Verificacion permite ingresar el codigo recibido.
+- [ ] Recuperar contrasena envia codigo, permite actualizar password y vuelve a login.
 - [ ] Crear contrasena finaliza el registro cuando backend soporte el contrato.
 - [ ] Paso Clave muestra en tiempo real requisitos de seguridad, incluyendo mayuscula, numero, caracter especial y que no comience con numero.
 - [ ] Paso Clave mantiene Registrarse deshabilitado hasta que ambas contrasenas validas coincidan.
@@ -32,6 +34,8 @@
 
 - [ ] Inicio muestra `SubastAR`.
 - [ ] Explorar subastas navega al listado.
+- [ ] Catalogo, detalle y vivo muestran imagenes reales de lotes cuando `imagenes` trae URLs.
+- [ ] Lotes con varias imagenes muestran carrusel con flechas, dots y autoavance.
 - [ ] Filtros aplican estado, categoria y moneda.
 - [ ] Las tarjetas muestran `Proximas` visualmente como `Proximas` con acento en la UI.
 - [ ] Datos de subasta abre catalogo y subasta en vivo cuando corresponde.
@@ -98,4 +102,9 @@
 - [ ] Un `403` de puja presenta el estado restringido.
 - [ ] Errores JSON con `message`, `error`, `errors` o `errores` se muestran legibles.
 - [ ] Errores de texto plano no rompen la pantalla.
-- [ ] Backend apagado muestra estado recuperable con reintento.
+- [ ] DNI solicita acceso a galeria y muestra un mensaje claro si se rechaza.
+- [ ] Fotos del bien solicitan acceso a galeria y muestran un mensaje claro si se rechaza.
+- [ ] Documentos abren selector para PDF o imagen y muestran un mensaje claro si falla.
+- [ ] Foto de cheque solicita acceso a galeria y muestra un mensaje claro si se rechaza.
+- [ ] Backend apagado redirige a `/offline` y muestra estado recuperable con reintento.
+- [ ] Reintentar conexion consulta `GET /health/ping`; si responde `pong`, invalida queries y vuelve al inicio.

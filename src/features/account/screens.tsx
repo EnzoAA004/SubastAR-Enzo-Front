@@ -11,6 +11,7 @@ import { colors, fonts, radius, spacing, typography } from '@/constants/theme';
 import { useSafeBack } from '@/hooks/use-safe-back';
 import { useSession } from '@/providers/app-provider';
 import { assetService, authService, chatService, insuranceService, paymentService, profileService, purchaseService } from '@/services/api';
+import { explainFileAccess, permissionDeniedMessage, requestMediaLibraryPermission } from '@/services/permissions';
 import type { Country, FileUpload, PaymentMethodKind } from '@/types/domain';
 
 function FilterTabs<T extends string>({ options, value, onChange }: { options: readonly T[]; value: T; onChange: (next: T) => void }) {
@@ -379,7 +380,7 @@ export function PoliciesScreen() {
   return (
     <Screen>
       <Header title="Seguros y Pólizas" onBack={back} />
-      <StatusCard icon="shield-checkmark-outline" title="Cobertura de bienes" message="Tus pólizas asociadas a compras aparecerán acá cuando el backend informe el vínculo." tone="green" />
+      <StatusCard icon="shield-checkmark-outline" title="Cobertura de bienes" message="Tus pólizas asociadas a compras aparecerán acá cuando el servidor informe el vínculo." tone="green" />
       {isLoading ? <LoadingState /> : isError ? <ErrorState onRetry={() => refetch()} /> : insuredPurchases.length ? insuredPurchases.map((purchase) => (
         <Card key={purchase.insuranceId} style={styles.itemCard}>
           <Badge label="Póliza activa" tone="green" />
@@ -877,6 +878,7 @@ export function PaymentAddScreen() {
   const [security, setSecurity] = useState('');
   const [dni, setDni] = useState('');
   const [photo, setPhoto] = useState<FileUpload>();
+  const [pickerError, setPickerError] = useState('');
   const save = useMutation({
     mutationFn: () => paymentService.create({
       type: kind, bankName: bank, bankCountry: country, cbuIban: kind === 'cuenta_bancaria' ? identifier : undefined,
@@ -892,10 +894,21 @@ export function PaymentAddScreen() {
     },
   });
   async function pickCheque() {
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.7 });
-    if (!result.canceled) {
-      const asset = result.assets[0];
-      setPhoto({ uri: asset.uri, name: asset.fileName ?? `cheque-${Date.now()}.jpg`, type: asset.mimeType ?? 'image/jpeg', file: asset.file });
+    try {
+      setPickerError('');
+      explainFileAccess('photo');
+      const granted = await requestMediaLibraryPermission();
+      if (!granted) {
+        setPickerError(permissionDeniedMessage('gallery'));
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.7 });
+      if (!result.canceled) {
+        const asset = result.assets[0];
+        setPhoto({ uri: asset.uri, name: asset.fileName ?? `cheque-${Date.now()}.jpg`, type: asset.mimeType ?? 'image/jpeg', file: asset.file });
+      }
+    } catch {
+      setPickerError(permissionDeniedMessage('gallery'));
     }
   }
   const label = kind === 'tarjeta_credito' ? 'Tarjeta de crédito' : kind === 'cuenta_bancaria' ? 'Cuenta bancaria' : 'Cheque certificado';
@@ -930,7 +943,11 @@ export function PaymentAddScreen() {
         <Input label="Número de cheque" value={identifier} onChangeText={setIdentifier} />
         <Input label="Monto certificado" value={amount} keyboardType="number-pad" onChangeText={setAmount} />
       </>}
-      {kind === 'cheque_certificado' ? <UploadBox label={photo ? 'Foto cargada' : 'Subir foto del cheque'} description="Imagen del respaldo certificado" done={!!photo} icon="camera-outline" onPress={pickCheque} /> : null}
+      {kind === 'cheque_certificado' ? <>
+        <Body muted>Necesitamos abrir tu galeria para adjuntar la imagen del cheque. En computadora se abrira el selector de archivos.</Body>
+        <UploadBox label={photo ? 'Foto cargada' : 'Subir foto del cheque'} description="Imagen del respaldo certificado" done={!!photo} icon="camera-outline" onPress={pickCheque} />
+        {pickerError ? <StatusState icon="alert-circle-outline" title="No pudimos acceder a la foto" message={pickerError} tone="red" /> : null}
+      </> : null}
       <Button label={save.isPending ? 'Guardando...' : submitLabel} disabled={!canSave || save.isPending} onPress={() => save.mutate()} />
       {save.isError ? <Body muted>{save.error instanceof Error ? save.error.message : 'No fue posible agregar el medio.'}</Body> : null}
     </Screen>

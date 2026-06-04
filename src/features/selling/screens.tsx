@@ -11,6 +11,7 @@ import { Badge, Body, Button, Card, Divider, Header, IconButton, InfoTile, Input
 import { colors, fonts, radius, spacing, typography } from '@/constants/theme';
 import { useSafeBack } from '@/hooks/use-safe-back';
 import { assetService } from '@/services/api';
+import { explainFileAccess, permissionDeniedMessage, requestMediaLibraryPermission } from '@/services/permissions';
 import type { FileUpload } from '@/types/domain';
 
 const steps = ['Datos', 'Fotos', 'Documentos', 'Confirmar'];
@@ -140,15 +141,27 @@ export function SellPhotosScreen() {
   const back = useSafeBack();
   const { amount, code, name, type } = useLocalSearchParams<{ amount: string; code: string; name: string; type: string }>();
   const [photos, setPhotos] = useState<FileUpload[]>([]);
+  const [apiError, setApiError] = useState('');
   const upload = useMutation({
     mutationFn: () => assetService.uploadPhotos(code ?? '', photos),
     onSuccess: () => router.push({ pathname: '/sell/documents', params: { amount, code, name, type, photos: String(photos.length) } }),
   });
   async function addPhoto() {
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsMultipleSelection: true, quality: 0.7 });
-    if (!result.canceled) setPhotos((current) => [...current, ...result.assets.map((asset, index) => ({
-      uri: asset.uri, name: asset.fileName ?? `bien-${Date.now()}-${index}.jpg`, type: asset.mimeType ?? 'image/jpeg', file: asset.file,
-    }))].slice(0, 8));
+    try {
+      setApiError('');
+      explainFileAccess('photo');
+      const granted = await requestMediaLibraryPermission();
+      if (!granted) {
+        setApiError(permissionDeniedMessage('gallery'));
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsMultipleSelection: true, quality: 0.7 });
+      if (!result.canceled) setPhotos((current) => [...current, ...result.assets.map((asset, index) => ({
+        uri: asset.uri, name: asset.fileName ?? `bien-${Date.now()}-${index}.jpg`, type: asset.mimeType ?? 'image/jpeg', file: asset.file,
+      }))].slice(0, 8));
+    } catch {
+      setApiError(permissionDeniedMessage('gallery'));
+    }
   }
   return (
     <Screen>
@@ -164,9 +177,11 @@ export function SellPhotosScreen() {
         <InfoTile icon="images-outline" label="Máximo" value="8 fotos" />
       </View>
       <Card style={styles.dropzoneCard}>
+        <Body muted>Para cargar fotos necesitamos abrir tu galeria. En computadora se abrira el selector de archivos.</Body>
         <UploadBox label="Agregar fotos" description="JPG o PNG" icon="camera-outline" onPress={addPhoto} />
         <Body muted>Podés seleccionar varias imágenes a la vez. Si no cumplen el mínimo, no podrás avanzar.</Body>
       </Card>
+      {apiError ? <StatusState icon="alert-circle-outline" title="No pudimos acceder a tus fotos" message={apiError} tone="red" /> : null}
       <View style={styles.gallery}>
         {photos.map((file) => <PhotoPreview key={file.uri} file={file} onRemove={() => setPhotos((current) => current.filter((photo) => photo.uri !== file.uri))} />)}
       </View>
@@ -183,18 +198,25 @@ export function SellDocumentsScreen() {
   const params = useLocalSearchParams<{ amount: string; code: string; name: string; type: string; photos: string }>();
   const [documents, setDocuments] = useState<FileUpload[]>([]);
   const [declaration, setDeclaration] = useState(false);
+  const [apiError, setApiError] = useState('');
   const upload = useMutation({
     mutationFn: () => assetService.uploadDocuments(params.code ?? '', declaration, documents),
     onSuccess: () => router.push({ pathname: '/sell/review', params: { ...params, documents: String(documents.length) } }),
   });
   async function addDocument() {
-    const result = await DocumentPicker.getDocumentAsync({ multiple: true, copyToCacheDirectory: true });
-    if (!result.canceled) setDocuments(result.assets.map((asset, index) => ({
-      uri: asset.uri,
-      name: asset.name || `documento-${Date.now()}-${index}.pdf`,
-      type: asset.mimeType ?? 'application/pdf',
-      file: asset.file,
-    })));
+    try {
+      setApiError('');
+      explainFileAccess('document');
+      const result = await DocumentPicker.getDocumentAsync({ type: ['application/pdf', 'image/*'], multiple: true, copyToCacheDirectory: true });
+      if (!result.canceled) setDocuments(result.assets.map((asset, index) => ({
+        uri: asset.uri,
+        name: asset.name || `documento-${Date.now()}-${index}.pdf`,
+        type: asset.mimeType ?? 'application/pdf',
+        file: asset.file,
+      })));
+    } catch {
+      setApiError(permissionDeniedMessage('document'));
+    }
   }
   return (
     <Screen>
@@ -214,9 +236,11 @@ export function SellDocumentsScreen() {
       </Pressable>
       <SectionLabel>Documentación preventiva opcional</SectionLabel>
       <Card style={styles.dropzoneCard}>
+        <Body muted>Al tocar adjuntar se abrira el selector de archivos del dispositivo. Podes elegir PDF o imagenes.</Body>
         <UploadBox label="Adjuntar comprobantes" description="PDF o imagen, hasta 10 MB" icon="document-attach-outline" done={documents.length > 0} onPress={addDocument} />
         <Body muted>Pueden ser certificados, respaldos o imágenes adicionales que ayuden a la revisión.</Body>
       </Card>
+      {apiError ? <StatusState icon="alert-circle-outline" title="No pudimos abrir tus documentos" message={apiError} tone="red" /> : null}
       {documents.map((document) => (
         <Card key={document.uri} style={styles.documentRow}>
           <View style={styles.documentRowCopy}>

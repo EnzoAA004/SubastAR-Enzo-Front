@@ -353,7 +353,7 @@ export function ErrorState({ message, onRetry }: { message?: string; onRetry?: (
         <Ionicons name="cloud-offline-outline" size={25} color={colors.danger} />
       </View>
       <Text style={styles.sectionTitle}>No pudimos cargar la información</Text>
-      <Body muted>{message ?? 'Revisá que el backend esté encendido e intentá nuevamente.'}</Body>
+      <Body muted>{message ?? 'Revise su conexión con el servidor e intentá nuevamente.'}</Body>
       {onRetry ? <Button label="Reintentar" variant="secondary" onPress={onRetry} /> : null}
     </Card>
   );

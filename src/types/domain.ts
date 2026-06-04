@@ -22,6 +22,7 @@ export interface Lot {
   basePrice: number;
   category: string;
   image?: string;
+  images?: string[];
   artist?: string;
   history?: string;
   creationDate?: string;
